@@ -18,13 +18,13 @@ object UserService {
         val writeResult: WriteResult = try {
             // Perform the write operation
             val writeFuture: ApiFuture<WriteResult> = userRef.set(userData as Map<String, Any>)
-            writeFuture.await()
+            writeFuture.get()
         } catch (e: Exception) {
             throw e
         }
 
         // Access the write result
-        println("Document ID: ${writeResult.writeTime}")
+        println("Document ID: ${writeResult.updateTime}")
     }
 
     fun userExists(uid: String): Boolean {

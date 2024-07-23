@@ -37,3 +37,6 @@ out/
 
 *.json
 .env
+
+## This file should be excluded
+local.properties

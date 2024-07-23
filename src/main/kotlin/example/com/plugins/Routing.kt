@@ -1,25 +1,28 @@
 package example.com.plugins
 
-import com.google.api.core.ApiFuture
-import com.google.api.core.ApiFutures
-import com.google.api.core.ApiService
-import com.google.cloud.firestore.WriteResult
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.auth.FirebaseAuthException
 import com.google.firebase.cloud.FirestoreClient
-import com.sun.tools.sjavac.Source
 import example.com.models.CreateUserProfileRequest
 import example.com.models.User
-import example.com.services.AuthService.verifyFirebaseToken
-import example.com.services.UserService.createUserProfile
+import example.com.services.VerificationErrorState
+import example.com.services.VerificationState
+import example.com.services.VerificationTokenServiceImpl
 import io.ktor.http.*
 import io.ktor.server.application.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
-import io.ktor.util.reflect.instanceOf
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.collectLatest
+import java.util.concurrent.TimeUnit
+
+object TimeOut {
+    const val VALUE = 10L
+}
 
 fun Application.configureRouting() {
+    val auth = FirebaseAuth.getInstance()
+    val verificationTokenService = VerificationTokenServiceImpl(auth)
     routing {
         get("/") {
             call.respondText("Hello World!")
@@ -27,26 +30,46 @@ fun Application.configureRouting() {
         post("/createUserProfile") {
             val request = call.receive<CreateUserProfileRequest>()
             val token = request.token
-            if (!token.isNullOrBlank()) {
-                try {
-                    val uid = FirebaseAuth.getInstance().verifyIdToken(token).uid
+            verificationTokenService
+                .verifyAndCheckForTokenRevoked(token = token, getFirebaseToken = true)
+                .collectLatest { verificationState ->
+                    when (verificationState) {
+                        is VerificationState.VerificationStateFailure -> {
+                            verificationState.error?.let { errorState ->
+                                if (errorState == VerificationErrorState.TokenRevoked) call.respond(
+                                    HttpStatusCode.Unauthorized,
+                                    "Authorization token has expired"
+                                )
+                                if (errorState == VerificationErrorState.MissingToken) call.respond(
+                                    HttpStatusCode.Unauthorized,
+                                    "Missing authorization token"
+                                )
+                                if (errorState == VerificationErrorState.FailedToParseToken) call.respond(
+                                    HttpStatusCode.BadRequest,
+                                    "Failed to create user"
+                                )
+                            }
+                            call.respond(HttpStatusCode.BadRequest, "Failed to create user")
+                        }
 
-                    val user = User(request.name)
-                    val firestore = FirestoreClient.getFirestore()
+                        is VerificationState.VerificationStateSuccess -> {
+                            val user = User(request.name)
+                            val firestore = FirestoreClient.getFirestore()
+                            val userObj: Map<String, Any> = hashMapOf(
+                                "name" to request.name,
+                            )
 
-                    val userObj: Map<String, Any> = hashMapOf(
-                        "name" to request.name
-                    )
-                    firestore.collection("users").document(uid).set(userObj)
-                    call.respond(HttpStatusCode.Created, "User created: ${user.name}")
-                } catch (e: FirebaseAuthException) {
-                    call.respond(HttpStatusCode.Unauthorized, "Authorization token is invalid")
-                } catch (e: Exception) {
-                    call.respond(HttpStatusCode.BadRequest, "Failed to create user")
+                            val asyncCall = async { firestore
+                                .collection("users")
+                                .document(verificationState.firebaseToken?.uid ?:
+                                    throw IllegalArgumentException("UID is null"))
+                                .set(userObj)
+                                .get(TimeOut.VALUE, TimeUnit.SECONDS) }
+                            asyncCall.await()
+                            call.respond(HttpStatusCode.Created, "User created: ${user.name}")
+                        }
+                    }
                 }
-            } else {
-                call.respond(HttpStatusCode.Unauthorized, "Missing authorization token")
-            }
         }
     }
 }
