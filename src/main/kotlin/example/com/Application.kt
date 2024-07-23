@@ -6,6 +6,10 @@ import io.ktor.server.engine.*
 import io.ktor.server.netty.*
 
 fun main(args: Array<String>) {
+    val arrayListOfEnv = EnvLoader.arrayOfEnvs("C:\\Users\\dacos\\Documents\\autoseersservice\\.env")
+    arrayListOfEnv.forEach {
+        System.setProperty(it.first, it.second)
+    }
     val port = System.getenv("PORT")?.toInt() ?: 8080
     embeddedServer(
         Netty,
@@ -16,6 +20,7 @@ fun main(args: Array<String>) {
 }
 
 fun Application.module() {
+    FirebaseAdmin.initialize()
     configureSerialization()
     configureMonitoring()
     configureRouting()
