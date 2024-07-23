@@ -3,20 +3,25 @@ package example.com.services
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthException
 import com.google.firebase.auth.FirebaseToken
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.*
+import kotlin.time.DurationUnit
+import kotlin.time.toDuration
 
 sealed class VerificationState {
     data class VerificationStateSuccess(
         val firebaseToken: FirebaseToken? = null,
     ): VerificationState()
     data class VerificationStateFailure(
-        val error: VerificationErrorState
+        val error: VerificationErrorState? = null
     ): VerificationState()
 }
 
 sealed class VerificationErrorState {
     data object FailedToParseToken: VerificationErrorState()
     data object MissingToken: VerificationErrorState()
+    data object TokenRevoked: VerificationErrorState()
 }
 
 interface VerificationTokenService {
@@ -33,7 +38,8 @@ class VerificationTokenServiceImpl(
     private val auth: FirebaseAuth,
 ): VerificationTokenService {
     /*
-     * Verifies that the token is valid and sends a VerificationState back to the caller
+     * Verifies that the token is valid and sends a VerificationStateSuccess back to the caller
+     * with a firebaseToken if getFirebaseToken is true
      *
      * If the verification step failed, this function will return VerificationStateFailure with a
      * VerificationErrorState. VerificationErrorState could be issued due to a missing token or failure to
@@ -43,29 +49,37 @@ class VerificationTokenServiceImpl(
             Flow<VerificationState> = flow {
                 try {
                     val firebaseToken = auth.verifyIdToken(token)
-                    VerificationState.VerificationStateSuccess(firebaseToken)
+                    if (getFirebaseToken) {
+                        emit(VerificationState.VerificationStateSuccess(firebaseToken))
+                    } else {
+                        emit(VerificationState.VerificationStateSuccess())
+                    }
                 }catch (e: IllegalArgumentException) {
-                    VerificationState.VerificationStateFailure(
+                    emit(VerificationState.VerificationStateFailure(
                         error = VerificationErrorState.MissingToken
-                    )
+                    ))
                 }catch (e: FirebaseAuthException) {
-                    VerificationState.VerificationStateFailure(
+                    emit(VerificationState.VerificationStateFailure(
                         error = VerificationErrorState.FailedToParseToken
-                    )
+                    ))
                 }
     }
 
     /*
-     * Similar to isVerificationTokenValid except that it performs a additional check for if the
+     * Similar to isVerificationTokenValid except that it performs an additional check for if the
      * token is revoked
      */
+    @OptIn(ExperimentalCoroutinesApi::class)
     override fun verifyAndCheckForTokenRevoked(token: String, getFirebaseToken: Boolean): Flow<VerificationState> =
         isVerificationTokenValid(token, getFirebaseToken)
-            .filterIsInstance(VerificationState.VerificationStateSuccess::class)
-            .map {
-                val firebaseToken = auth.verifyIdToken(token, true)
-                return@map if (getFirebaseToken) VerificationState
-                    .VerificationStateSuccess(firebaseToken = firebaseToken)
-                        else VerificationState.VerificationStateSuccess()
+            .mapLatest {
+                try {
+                    val firebaseToken = auth.verifyIdToken(token, true)
+                    if (getFirebaseToken) VerificationState
+                        .VerificationStateSuccess(firebaseToken = firebaseToken)
+                    else VerificationState.VerificationStateSuccess()
+                }catch (e: Exception) {
+                    VerificationState.VerificationStateFailure(error = VerificationErrorState.TokenRevoked)
+                }
             }
 }
