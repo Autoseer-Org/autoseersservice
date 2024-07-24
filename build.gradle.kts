@@ -36,4 +36,6 @@ dependencies {
     implementation("com.google.firebase:firebase-admin:$firebase_version")
     testImplementation("io.ktor:ktor-server-tests-jvm")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:$kotlin_version")
+
+    implementation("io.ktor:ktor-server-status-pages:2.3.12")
 }
