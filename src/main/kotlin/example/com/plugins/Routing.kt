@@ -3,6 +3,7 @@ package example.com.plugins
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.cloud.FirestoreClient
 import example.com.models.CreateUserProfileRequest
+import example.com.models.CreateUserProfileResponse
 import example.com.models.User
 import example.com.services.VerificationErrorState
 import example.com.services.VerificationState
@@ -38,22 +39,21 @@ fun Application.configureRouting() {
                             verificationState.error?.let { errorState ->
                                 if (errorState == VerificationErrorState.TokenRevoked) call.respond(
                                     HttpStatusCode.Unauthorized,
-                                    "Authorization token has expired"
+                                    CreateUserProfileResponse("Authorization token has expired")
                                 )
                                 if (errorState == VerificationErrorState.MissingToken) call.respond(
                                     HttpStatusCode.Unauthorized,
-                                    "Missing authorization token"
+                                    CreateUserProfileResponse("\"Missing authorization token\"")
                                 )
                                 if (errorState == VerificationErrorState.FailedToParseToken) call.respond(
                                     HttpStatusCode.BadRequest,
-                                    "Failed to create user"
+                                    CreateUserProfileResponse("Failed to create user")
                                 )
                             }
-                            call.respond(HttpStatusCode.BadRequest, "Failed to create user")
+                            call.respond(HttpStatusCode.BadRequest, CreateUserProfileResponse("Failed to create user"))
                         }
 
                         is VerificationState.VerificationStateSuccess -> {
-                            val user = User(request.name)
                             val firestore = FirestoreClient.getFirestore()
                             val userObj: Map<String, Any> = hashMapOf(
                                 "name" to request.name,
@@ -66,7 +66,7 @@ fun Application.configureRouting() {
                                 .set(userObj)
                                 .get(TimeOut.VALUE, TimeUnit.SECONDS) }
                             asyncCall.await()
-                            call.respond(HttpStatusCode.Created, "User created: ${user.name}")
+                            call.respond(HttpStatusCode.Created, CreateUserProfileResponse())
                         }
                     }
                 }

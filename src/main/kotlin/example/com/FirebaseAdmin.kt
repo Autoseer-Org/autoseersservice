@@ -10,7 +10,7 @@ import java.io.FileInputStream
 object FirebaseAdmin {
     fun initialize() {
         val localServiceAccountKey = System.getProperty("FIREBASE_SERVICE_ACCOUNT_KEY_FILE")
-        val serviceAccountKey = System.getenv("FIREBASE_SERVICE_ACCOUNT_KEY")
+        val serviceAccountKey = System.getenv("FIREBASE_SERVICE_ACCOUNT_KEY_FILE")
 
         val options = if (localServiceAccountKey != null) {
             // Use local file
