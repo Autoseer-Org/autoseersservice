@@ -4,7 +4,6 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.cloud.FirestoreClient
 import example.com.models.CreateUserProfileRequest
 import example.com.models.CreateUserProfileResponse
-import example.com.models.User
 import example.com.services.VerificationErrorState
 import example.com.services.VerificationState
 import example.com.services.VerificationTokenServiceImpl
@@ -13,8 +12,9 @@ import io.ktor.server.application.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
-import kotlinx.coroutines.async
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
 
 object TimeOut {
@@ -59,14 +59,24 @@ fun Application.configureRouting() {
                                 "name" to request.name,
                             )
 
-                            val asyncCall = async { firestore
-                                .collection("users")
-                                .document(verificationState.firebaseToken?.uid ?:
-                                    throw IllegalArgumentException("UID is null"))
-                                .set(userObj)
-                                .get(TimeOut.VALUE, TimeUnit.SECONDS) }
-                            asyncCall.await()
-                            call.respond(HttpStatusCode.Created, CreateUserProfileResponse())
+                            try {
+                                withContext(Dispatchers.IO) {
+                                    firestore
+                                        .collection("users")
+                                        .document(
+                                            verificationState.firebaseToken?.uid
+                                                ?: ""
+                                        )
+                                        .set(userObj)
+                                    call.respond(HttpStatusCode.Created, CreateUserProfileResponse())
+                                }
+                            } catch (e: Exception) {
+                                call.respond(
+                                    HttpStatusCode.InternalServerError, CreateUserProfileResponse(
+                                        failure = e.localizedMessage
+                                    )
+                                )
+                            }
                         }
                     }
                 }
