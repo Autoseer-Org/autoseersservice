@@ -280,7 +280,7 @@ fun Application.configureRouting() {
                                     "year" to year,
                                     "carHealth" to (carInfoData?.get("carHealth") ?: ""),
                                 ))
-                                call.respond(HttpStatusCode.OK, UploadResponse())
+                                call.respond(HttpStatusCode.OK, ManualEntryResponse())
                             } catch (e: Exception) {
                                 call.respond(
                                     HttpStatusCode.InternalServerError,
