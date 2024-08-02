@@ -217,5 +217,78 @@ fun Application.configureRouting() {
                     }
                 }
         }
+
+        post("/manualEntry") {
+            val context = this.coroutineContext
+            val request = call.receive<ManualEntryRequest>()
+            val token = request.token
+            verificationTokenService
+                .verifyAndCheckForTokenRevoked(token = token, getFirebaseToken = true)
+                .collectLatest { verificationState ->
+                    when (verificationState) {
+                        is VerificationState.VerificationStateFailure -> {
+                            verificationState.error?.let { errorState ->
+                                if (errorState == VerificationErrorState.TokenRevoked) call.respond(
+                                    HttpStatusCode.Unauthorized,
+                                    ManualEntryResponse("Authorization token has expired")
+                                )
+                                if (errorState == VerificationErrorState.MissingToken) call.respond(
+                                    HttpStatusCode.Unauthorized,
+                                    ManualEntryResponse("\"Missing authorization token\"")
+                                )
+                                if (errorState == VerificationErrorState.FailedToParseToken) call.respond(
+
+                                    HttpStatusCode.BadRequest,
+                                    ManualEntryResponse("Failed to enter car info")
+                                )
+                            }
+                            call.respond(HttpStatusCode.BadRequest, ManualEntryResponse("Failed to enter car info"))
+                        }
+
+                        is VerificationState.VerificationStateSuccess -> {
+                            try {
+                                val uid = verificationState.firebaseToken?.uid ?: ""
+                                val userDoc = firestore
+                                    .collection("users")
+                                    .document(uid)
+                                val userData = withContext(Dispatchers.IO + context) {
+                                    userDoc.get().get()
+                                }.data
+                                if (userData == null) {
+                                    call.respond(HttpStatusCode.BadRequest, ManualEntryResponse("User does not exist"))
+                                }
+                                val carInfoRef = userData?.get("carInfoRef") as DocumentReference
+                                val carInfoData = withContext(Dispatchers.IO + context) {
+                                    carInfoRef.get().get()
+                                }.data
+                                val make = request.make.ifBlank {
+                                    carInfoData?.get("make") ?: ""
+                                }
+                                val mileage = request.mileage.ifBlank {
+                                    carInfoData?.get("mileage") ?: ""
+                                }
+                                val model = request.model.ifBlank {
+                                    carInfoData?.get("model") ?: ""
+                                }
+                                val year = request.year.ifBlank {
+                                    carInfoData?.get("year") ?: ""
+                                }
+                                carInfoRef.set(mapOf(
+                                    "make" to make,
+                                    "mileage" to mileage,
+                                    "model" to model,
+                                    "year" to year,
+                                    "carHealth" to (carInfoData?.get("carHealth") ?: ""),
+                                ))
+                                call.respond(HttpStatusCode.OK, UploadResponse())
+                            } catch (e: Exception) {
+                                call.respond(
+                                    HttpStatusCode.InternalServerError,
+                                    HomeResponse(failure = e.localizedMessage))
+                            }
+                        }
+                    }
+                }
+        }
     }
 }
