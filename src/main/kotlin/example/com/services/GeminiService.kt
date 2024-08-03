@@ -60,7 +60,7 @@ class GeminiServiceImpl : GeminiService {
           }
         }
     """.trimIndent()
-        val apiKey = System.getenv("gemini_api_key") ?: "AIzaSyBTev3sqMNmGiv60XBz8Nsi0u9C5ED_2h0"
+        val apiKey = System.getenv("gemini_api_key") ?: ""
        try {
             val response =
                 client.post("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=$apiKey") {
