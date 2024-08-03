@@ -14,7 +14,7 @@ import kotlinx.serialization.json.*
 import java.util.*
 
 interface GeminiService {
-    suspend fun generateCarParts(image: ByteArray): Flow<GeminiReportData?>
+    suspend fun generateCarPartsFromImage(image: ByteArray): Flow<GeminiReportData?>
     fun generateRepairPlaces()
 }
 
@@ -28,7 +28,7 @@ class GeminiServiceImpl : GeminiService {
         }
     }
 
-    override suspend fun generateCarParts(image: ByteArray): Flow<GeminiReportData?> = flow {
+    override suspend fun generateCarPartsFromImage(image: ByteArray): Flow<GeminiReportData?> = flow {
         val based64Image = Base64.getEncoder().encodeToString(image)
         val requestBody = """
         {
@@ -41,7 +41,7 @@ class GeminiServiceImpl : GeminiService {
                  The idea is that we can generate a collection of car parts that are as generic as possible such that other multi checkpoint reports from other companies can easily be parsed and generate the same json response.
                   We care about the category that the part belongs too such as interior, exterior, etc. We also care about the make and model of the car as well as the year (json fields should be car_make, car_model, car_year and for the parts it should be carParts). 
                   If car make, model, and year were missing then fill them with empty strings. Lastly, you should look at the parts that need attention and the parts that are good and create overall health score for the car. it should range from 0 to 100 since it should a percentage value and the json field name should be carHealthScore (string).
-                   Finally, you should also add a field to the json for the total mileage of the car if it's found. If it's not found just fill it with an empty string. The json field name should be mileage"},
+                   Finally, you should also add a field to the json for the total mileage of the car if it's found. If it's not found just fill it with an empty string. The json field name should be mileage. One more thing! Check if the image is a valid report of a car. If not, create a json field called is_image_valid that will be either true or false"},
                 {
                   "inline_data": {
                     "mime_type":"image/jpeg",
@@ -60,7 +60,7 @@ class GeminiServiceImpl : GeminiService {
           }
         }
     """.trimIndent()
-        val apiKey = System.getenv("gemini_api_key") ?: ""
+        val apiKey = System.getenv("gemini_api_key") ?: "AIzaSyBTev3sqMNmGiv60XBz8Nsi0u9C5ED_2h0"
        try {
             val response =
                 client.post("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=$apiKey") {

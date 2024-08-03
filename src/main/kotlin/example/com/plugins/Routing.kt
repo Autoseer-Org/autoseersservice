@@ -19,10 +19,6 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.withContext
 import java.sql.Timestamp
 
-object TimeOut {
-    const val VALUE = 10L
-}
-
 fun Application.configureRouting() {
     val auth: FirebaseAuth = FirebaseAuth.getInstance()
     val verificationTokenService = VerificationTokenServiceImpl(auth)
@@ -32,6 +28,83 @@ fun Application.configureRouting() {
     routing {
         get("/") {
             call.respondText("Hello World!")
+        }
+        post("/alerts") {
+            val context = this.coroutineContext
+            val request = call.receive<AlertsRequest>()
+            val token = request.token
+            verificationTokenService
+                .verifyAndCheckForTokenRevoked(token = token, getFirebaseToken = true)
+                .collect { verificationStatus ->
+                    if (verificationStatus is VerificationState.VerificationStateSuccess) {
+                        val uid = verificationStatus.firebaseToken?.uid ?: ""
+                        val userDoc = firestore
+                            .collection("users")
+                            .document(uid)
+                        try {
+                            var alertsResponse = AlertsResponse()
+                            val userData = withContext(Dispatchers.IO + context) {
+                                userDoc.get().get()
+                            }.data
+                            if (userData == null) {
+                                call.respond(HttpStatusCode.OK, alertsResponse)
+                            }
+                            val carInfoRef = userData?.get("carInfoRef") as DocumentReference
+                            val carInfo = withContext(Dispatchers.IO + context) {
+                                carInfoRef.get().get()
+                            }
+                            if (carInfo?.data?.isEmpty() == true) {
+                                call.respond(HttpStatusCode.OK, alertsResponse)
+                            } else {
+                                alertsResponse = alertsResponse.copy(data = mutableListOf())
+                                val mediumParts = carInfo
+                                    .reference
+                                    .collection("carPartsStatus")
+                                    .whereEqualTo("status", "Medium")
+                                    .get()
+
+                                val mediumPartRef = mediumParts.get()
+
+                                mediumPartRef.forEach {
+                                    val part = Alert(
+                                        name = it.data["name"] as String,
+                                        category = it.data["category"] as String,
+                                        updatedDate = (it.data["updatedDate"] ).toString(),
+                                        status = it.data["status"] as String,
+                                    )
+                                    alertsResponse.data?.add(part)
+                                }
+
+                                val badParts = carInfo
+                                    .reference
+                                    .collection("carPartsStatus")
+                                    .whereEqualTo("status", "Bad")
+                                    .get()
+                                val badPartsRef = badParts.get()
+                                badPartsRef.forEach {
+                                    val part = Alert(
+                                        name = it.data["name"] as String,
+                                        category = it.data["category"] as String,
+                                        updatedDate = (it.data["updatedDate"] as Timestamp).toString(),
+                                        status = it.data["status"] as String,
+                                    )
+                                    alertsResponse.data?.add(part)
+                                }
+                                call.respond(HttpStatusCode.OK, alertsResponse)
+                            }
+                        } catch (e: Exception) {
+                            call.respond(
+                                HttpStatusCode.InternalServerError,
+                                AlertsResponse()
+                            )
+                        }
+                    } else {
+                        call.respond(
+                            HttpStatusCode.Unauthorized,
+                            AlertsResponse()
+                        )
+                    }
+                }
         }
         post("/home") {
             val context = this.coroutineContext
@@ -105,7 +178,7 @@ fun Application.configureRouting() {
                     } else {
                         call.respond(
                             HttpStatusCode.Unauthorized,
-                            CreateUserProfileResponse("Authorization token not valid"))
+                            HomeResponse())
                     }
                 }
         }
@@ -113,43 +186,82 @@ fun Application.configureRouting() {
             val request = call.receive<UploadRequest>()
             val token = request.token
             verificationTokenService
-                .verifyAndCheckForTokenRevoked(token = token, getFirebaseToken = false)
+                .verifyAndCheckForTokenRevoked(token = token, getFirebaseToken = true)
                 .collectLatest { verificationStatus ->
                     if (verificationStatus is VerificationState.VerificationStateSuccess) {
                         val image = request.image
                         geminiService
-                            .generateCarParts(image)
+                            .generateCarPartsFromImage(image)
                             .collectLatest { carReportData ->
-                                try {
-                                    if (carReportData != null) {
-                                        val carInfoRef = firestore.collection("carInfo")
-                                            .document()
-                                        carInfoRef.set(mapOf(
-                                            "make" to carReportData.carMake,
-                                            "mileage" to carReportData.carMileage,
-                                            "model" to carReportData.carModel,
-                                            "year" to carReportData.carYear,
-                                            "carHealth" to carReportData.healthScore,
-                                        ))
-                                        carReportData.parts.forEach { part ->
-                                            carInfoRef
-                                                .collection("carPartsStatus")
-                                                .document()
-                                                .set(mapOf(
-                                                    "category" to part.category,
-                                                    "name" to part.partName,
-                                                    "status" to part.status,
-                                                    "updatedDate" to Timestamp(System.currentTimeMillis())
-                                                ))
-                                        }
-                                    }
-                                    call.respond(HttpStatusCode.OK, UploadResponse())
-                                    // Store carInfoReference and set it to the user's doc
-                                    // Store Gemini API key in GCP!
-                                }catch(e: Exception) {
+                                val uid = verificationStatus.firebaseToken?.uid ?: ""
+                                if (carReportData?.isImageValid?.not() == true) {
                                     call.respond(
-                                        HttpStatusCode.InternalServerError,
-                                        UploadResponse(failure = e.localizedMessage))
+                                        HttpStatusCode.BadRequest,
+                                        UploadResponse(failure = "invalid image"))
+                                } else {
+                                    try {
+                                        val userDoc = firestore
+                                            .collection("users")
+                                            .document(uid)
+                                        val userData = userDoc.get().get().data
+                                        if (userData == null) {
+                                            call.respond(
+                                                HttpStatusCode.BadRequest,
+                                                UploadResponse(failure = "No user found"))
+                                        }
+                                        val carInfoRef = userData?.get("carInfoRef") as? DocumentReference
+                                        if (carInfoRef == null) {
+                                            if (carReportData != null) {
+                                                val carInfoRef = firestore.collection("carInfo")
+                                                    .document()
+                                                carInfoRef.set(mapOf(
+                                                    "make" to carReportData.carMake,
+                                                    "mileage" to carReportData.carMileage,
+                                                    "model" to carReportData.carModel,
+                                                    "year" to carReportData.carYear,
+                                                    "carHealth" to carReportData.healthScore,
+                                                ))
+                                                carReportData.parts.forEach { part ->
+                                                    carInfoRef
+                                                        .collection("carPartsStatus")
+                                                        .document()
+                                                        .set(mapOf(
+                                                            "category" to part.category,
+                                                            "name" to part.partName,
+                                                            "status" to part.status,
+                                                            "updatedDate" to Timestamp(System.currentTimeMillis())
+                                                        ))
+                                                }
+                                            }
+                                        } else {
+                                            carInfoRef.update(
+                                                mapOf(
+                                                    "make" to carReportData?.carMake,
+                                                    "mileage" to carReportData?.carMileage,
+                                                    "model" to carReportData?.carModel,
+                                                    "year" to carReportData?.carYear,
+                                                    "carHealth" to carReportData?.healthScore,
+                                            ))
+                                            carReportData?.parts?.forEach { part ->
+                                                carInfoRef
+                                                    .collection("carPartsStatus")
+                                                    .document()
+                                                    .update(mapOf(
+                                                        "category" to part.category,
+                                                        "name" to part.partName,
+                                                        "status" to part.status,
+                                                        "updatedDate" to Timestamp(System.currentTimeMillis())
+                                                    ))
+                                            }
+                                        }
+                                        call.respond(HttpStatusCode.OK, UploadResponse())
+                                        // Store carInfoReference and set it to the user's doc
+                                        // Store Gemini API key in GCP!
+                                    }catch(e: Exception) {
+                                        call.respond(
+                                            HttpStatusCode.InternalServerError,
+                                            UploadResponse(failure = e.localizedMessage))
+                                    }
                                 }
                             }
                     } else {
