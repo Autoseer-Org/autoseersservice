@@ -5,6 +5,8 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class GeminiReportData(
+    @SerialName("is_image_valid")
+    val isImageValid: Boolean,
     @SerialName("car_make")
     val carMake: String,
     @SerialName("car_model")
