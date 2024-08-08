@@ -18,4 +18,6 @@ data class Alert(
     val category: String,
     val updatedDate: String,
     val status: String,
+    var summary: String? = "",
+    var possibleFixes: String? = ""
 )

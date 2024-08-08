@@ -72,6 +72,9 @@ fun Application.configureRouting() {
                                         updatedDate = (it.data["updatedDate"] ).toString(),
                                         status = it.data["status"] as String,
                                     )
+                                    geminiService.generateAlertSummary(alert = part).collect { geminiResponse ->
+                                        part.summary = geminiResponse?.summary ?: ""
+                                    }
                                     alertsResponse.data?.add(part)
                                 }
 
@@ -88,6 +91,10 @@ fun Application.configureRouting() {
                                         updatedDate = (it.data["updatedDate"] as Timestamp).toString(),
                                         status = it.data["status"] as String,
                                     )
+                                    geminiService.generateAlertSummary(alert = part).collect { geminiResponse ->
+                                        part.summary = geminiResponse?.summary ?: ""
+                                    }
+                                    alertsResponse.data?.add(part)
                                     alertsResponse.data?.add(part)
                                 }
                                 call.respond(HttpStatusCode.OK, alertsResponse)
@@ -194,7 +201,7 @@ fun Application.configureRouting() {
                             .generateCarPartsFromImage(image)
                             .collectLatest { carReportData ->
                                 val uid = verificationStatus.firebaseToken?.uid ?: ""
-                                if (carReportData?.isImageValid?.not() == true) {
+                                if (carReportData?.isImageValid == false) {
                                     call.respond(
                                         HttpStatusCode.BadRequest,
                                         UploadResponse(failure = "invalid image"))
@@ -210,7 +217,7 @@ fun Application.configureRouting() {
                                                 UploadResponse(failure = "No user found"))
                                         }
                                         val carInfoRef = userData?.get("carInfoRef") as? DocumentReference
-                                        if (carInfoRef == null) {
+                                        if (carInfoRef?.get()?.get()?.data == null) {
                                             if (carReportData != null) {
                                                 val carInfoRef = firestore.collection("carInfo")
                                                     .document()
