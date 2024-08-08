@@ -1,6 +1,8 @@
 package example.com.services
 
+import example.com.models.Alert
 import example.com.models.GeminiReportData
+import example.com.models.GeminiSummaryModel
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.contentnegotiation.*
@@ -15,7 +17,8 @@ import java.util.*
 
 interface GeminiService {
     suspend fun generateCarPartsFromImage(image: ByteArray): Flow<GeminiReportData?>
-    fun generateRepairPlaces()
+    fun generateRecommendedServices()
+    suspend fun generateAlertSummary(alert: Alert): Flow<GeminiSummaryModel?>
 }
 
 class GeminiServiceImpl : GeminiService {
@@ -41,7 +44,7 @@ class GeminiServiceImpl : GeminiService {
                  The idea is that we can generate a collection of car parts that are as generic as possible such that other multi checkpoint reports from other companies can easily be parsed and generate the same json response.
                   We care about the category that the part belongs too such as interior, exterior, etc. We also care about the make and model of the car as well as the year (json fields should be car_make, car_model, car_year and for the parts it should be carParts). 
                   If car make, model, and year were missing then fill them with empty strings. Lastly, you should look at the parts that need attention and the parts that are good and create overall health score for the car. it should range from 0 to 100 since it should a percentage value and the json field name should be carHealthScore (string).
-                   Finally, you should also add a field to the json for the total mileage of the car if it's found. If it's not found just fill it with an empty string. The json field name should be mileage. One more thing! Check if the image is a valid report of a car. If not, create a json field called is_image_valid that will be either true or false"},
+                   Finally, you should also add a field to the json for the total mileage of the car if it's found. If it's not found just fill it with an empty string. The json field name should be mileage. One more thing! Check if the image is a valid report of a car. If not, create a json field called is_image_valid that will be false else true if the car image is valid! You should looks for car reports like car inspections specifically"},
                 {
                   "inline_data": {
                     "mime_type":"image/jpeg",
@@ -83,8 +86,55 @@ class GeminiServiceImpl : GeminiService {
         }
     }
 
-    override fun generateRepairPlaces() {
-        TODO("Not yet implemented")
+    override fun generateRecommendedServices() {
+
+    }
+
+    override suspend fun generateAlertSummary(alert: Alert): Flow<GeminiSummaryModel?> = flow {
+        val requestBody = """
+        {
+          "contents":[
+            {
+              "parts":[
+                {"text": "You're the CarSeer! The most knowledgeable system for car reports and check point inspections for cars!
+                 Your job is to create a summary for a cart part that's been found to be in a ${alert.status} state and detail possible 
+                 things that could have happened in the first place that caused the part to be in this state. The part name is ${alert.name} and the category is ${alert.category}.
+                 You can store this summary in a field called summary. You should also keep it short but very informative (very important)!"
+                 },
+              ]
+            }
+          ],
+          "generationConfig": {
+                "stopSequences": [
+                    "Title"
+                ],
+                "temperature": 1.0,
+                "responseMimeType": "application/json"
+          }
+        }
+    """.trimIndent()
+        val apiKey = System.getenv("gemini_api_key") ?: ""
+        try {
+            val response =
+                client.post("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=$apiKey") {
+                    headers {
+                        append(HttpHeaders.Accept, ContentType.Application.Json)
+                    }
+                    setBody(requestBody)
+                }
+            println(response.bodyAsText())
+            val jsonObject = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+            val candidates = jsonObject["candidates"]?.jsonArray ?: emptyList()
+            val extractedText = candidates.mapNotNull { candidate ->
+                candidate.jsonObject["content"]?.jsonObject?.get("parts")?.jsonArray
+                    ?.find { it.jsonObject["text"] != null }?.jsonObject?.get("text")?.jsonPrimitive?.content
+            }
+            println(extractedText)
+            emit(Json.decodeFromString<GeminiSummaryModel>(extractedText[0]))
+        } catch (e: Exception) {
+            println("error: ${e.localizedMessage}")
+            emit(null)
+        }
     }
 
 }
