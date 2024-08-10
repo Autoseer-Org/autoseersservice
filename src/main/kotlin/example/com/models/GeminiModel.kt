@@ -30,3 +30,13 @@ data class GeminiPartData(
     @SerialName("status")
     val status: String,
 )
+
+@Serializable
+data class GeminiRecallShortSummaryData(
+    val recallsItems: List<GeminiRecallItem>
+)
+
+@Serializable
+data class GeminiRecallItem(
+    val title: String
+)

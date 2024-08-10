@@ -1,8 +1,10 @@
 package example.com.services
 
 import example.com.models.Alert
+import example.com.models.GeminiRecallShortSummaryData
 import example.com.models.GeminiReportData
 import example.com.models.GeminiSummaryModel
+import example.com.models.PublicRecallResponse
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.contentnegotiation.*
@@ -12,6 +14,7 @@ import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.*
 import java.util.*
 
@@ -19,6 +22,7 @@ interface GeminiService {
     suspend fun generateCarPartsFromImage(image: ByteArray): Flow<GeminiReportData?>
     fun generateRecommendedServices()
     suspend fun generateAlertSummary(alert: Alert): Flow<GeminiSummaryModel?>
+    suspend fun generateShortSummariesForRecalls(publicRecallResponse: PublicRecallResponse): Flow<GeminiRecallShortSummaryData?>
 }
 
 class GeminiServiceImpl : GeminiService {
@@ -131,6 +135,57 @@ class GeminiServiceImpl : GeminiService {
             }
             println(extractedText)
             emit(Json.decodeFromString<GeminiSummaryModel>(extractedText[0]))
+        } catch (e: Exception) {
+            println("error: ${e.localizedMessage}")
+            emit(null)
+        }
+    }
+
+    override suspend fun generateShortSummariesForRecalls(publicRecallResponse: PublicRecallResponse): Flow<GeminiRecallShortSummaryData?> = flow {
+        val json = Json { encodeDefaults = true }
+        val jsonResponse = json.encodeToString<PublicRecallResponse>(publicRecallResponse)
+        val requestBody = """
+        {
+          "contents":[
+            {
+              "parts":[
+                {"text": "I have a json below and I need you to return a json of list of recall 
+                items. I want you to read through each item in results list and give me a brief 
+                summary of the situation in each recall item. I need to create cards for a mobile 
+                app with just a title summary of the situation. Please make sure that you return the 
+                list in the same order as before.
+                 $jsonResponse"
+                 },
+              ]
+            }
+          ],
+          "generationConfig": {
+                "stopSequences": [
+                    "Title"
+                ],
+                "temperature": 1.0,
+                "responseMimeType": "application/json"
+          }
+        }
+    """.trimIndent()
+        val apiKey = System.getenv("gemini_api_key") ?: ""
+        try {
+            val response =
+                client.post("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=$apiKey") {
+                    headers {
+                        append(HttpHeaders.Accept, ContentType.Application.Json)
+                    }
+                    setBody(requestBody)
+                }
+            println(response.bodyAsText())
+            val jsonObject = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+            val candidates = jsonObject["candidates"]?.jsonArray ?: emptyList()
+            val extractedText = candidates.mapNotNull { candidate ->
+                candidate.jsonObject["content"]?.jsonObject?.get("parts")?.jsonArray
+                    ?.find { it.jsonObject["text"] != null }?.jsonObject?.get("text")?.jsonPrimitive?.content
+            }
+            println(extractedText)
+            emit(Json.decodeFromString<GeminiRecallShortSummaryData>(extractedText[0]))
         } catch (e: Exception) {
             println("error: ${e.localizedMessage}")
             emit(null)
