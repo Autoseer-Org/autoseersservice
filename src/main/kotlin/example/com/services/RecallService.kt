@@ -51,7 +51,6 @@ class RecallServiceImpl: RecallService {
     }
 
     override fun removeDuplicateRecallItems(publicRecallResponse: PublicRecallResponse, set: HashSet<String>) {
-        val iterator = publicRecallResponse.results.iterator()
         publicRecallResponse.results.removeAll {
             it.nhtsaCampaignNumber in set
         }
