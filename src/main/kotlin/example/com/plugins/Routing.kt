@@ -902,21 +902,21 @@ fun Application.configureRouting() {
                                 if (userData == null) {
                                     call.respond(
                                         HttpStatusCode.BadRequest,
-                                        ManualEntryResponse("User does not exist")
+                                        ManualEntryResponse("User not found")
                                     )
                                 }
                                 val carInfoRef = userData?.get("carInfoRef") as DocumentReference
                                 if (carInfoRef.get().get().data == null) {
                                     call.respond(
                                         HttpStatusCode.BadRequest,
-                                        ManualEntryResponse("Car info does not exist")
+                                        ManualEntryResponse("Car info not found")
                                     )
                                 }
                                 val recallsItemRef = carInfoRef?.collection("recalls")?.whereEqualTo("nhtsaCamapaignNumber", request.nhtsaCampaignNumber)?.get() as DocumentReference
                                 if (recallsItemRef.get().get().data == null) {
                                     call.respond(
                                         HttpStatusCode.BadRequest,
-                                        ManualEntryResponse("Recall item does not exist")
+                                        ManualEntryResponse("Recall not found")
                                     )
                                 }
                                 recallsItemRef.update(mapOf(
