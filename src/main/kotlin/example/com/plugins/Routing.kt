@@ -28,6 +28,71 @@ fun Application.configureRouting() {
 
     val firestore: Firestore = FirestoreClient.getFirestore()
     routing {
+        post("/recommendations") {
+            val request = call.receive<RecommendationsRequest>()
+            verificationTokenService.verifyAndCheckForTokenRevoked(request.token, true)
+                .collectLatest { verificationStatus ->
+                    if (verificationStatus is VerificationState.VerificationStateSuccess) {
+                        val uid = verificationStatus.firebaseToken?.uid ?: ""
+                        val userDoc = firestore.collection("users").document(uid)
+                        try {
+                            val userData = userDoc.get().get().data
+                            val carInfoRef = if (userData?.get("carInfoRef") == "") {
+                                null
+                            } else {
+                                userData?.get("carInfoRef") as DocumentReference
+                            }
+                            if (carInfoRef == null) {
+                                call.respond(
+                                    HttpStatusCode.OK, RecommendationsResponse(
+                                        error = "NEEDS_CAR_INFO"
+                                    )
+                                )
+                            } else {
+                                val carInfoData = carInfoRef.get().get().data
+                                val carMake = carInfoData?.get("make") as String
+                                val carModel = carInfoData["model"] as String
+                                var mileage = carInfoData["mileage"] as String
+                                val year = carInfoData["year"] as String
+                                if (carMake.isEmpty() || carModel.isEmpty() || mileage.isBlank() || year.isBlank()) {
+                                    call.respond(
+                                        HttpStatusCode.OK, RecommendationsResponse(
+                                            error = "NEEDS_CAR_INFO"
+                                        )
+                                    )
+                                } else {
+                                    geminiService.generateRecommendedServices(
+                                        CarInfoModel(make = carMake, model = carModel, mileage = mileage, year = year)
+                                    ).collectLatest { geminiRecommendations ->
+                                        if (geminiRecommendations == null) {
+                                            call.respond(
+                                                HttpStatusCode.OK, RecommendationsResponse(
+                                                    error = "Failed to produce response from gemini"
+                                                )
+                                            )
+                                        }else {
+                                            call.respond(
+                                                HttpStatusCode.OK, RecommendationsResponse(
+                                                    data = geminiRecommendations
+                                                )
+                                            )
+                                        }
+                                    }
+                                }
+
+                            }
+                        } catch (e: Exception) {
+                            logError(call = call, e)
+                            call.respond(
+                                HttpStatusCode.InternalServerError, RecommendationsResponse(
+                                    error = "Failed to produce response"
+                                )
+                            )
+                        }
+                    }
+                }
+        }
+
         post("/pollBookingStatus") {
             val request = call.receive<PollBookingStatusRequest>()
             verificationTokenService.verifyAndCheckForTokenRevoked(request.token, true)
@@ -71,7 +136,7 @@ fun Application.configureRouting() {
                             val carPartScheduledServiceData = carPartScheduledServiceRef?.get()?.get()?.data
                             if (carPartScheduledServiceData.isNullOrEmpty()) {
                                 call.respond(
-                                    HttpStatusCode.OK, BookingResponse()
+                                    HttpStatusCode.OK, PollBookingStatusResponse(state = BookingState.NO_BOOKING_REQUESTED)
                                 )
                             }
                             call.respond(

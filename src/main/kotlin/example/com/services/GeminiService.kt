@@ -1,8 +1,6 @@
 package example.com.services
 
-import example.com.models.Alert
-import example.com.models.GeminiReportData
-import example.com.models.GeminiSummaryModel
+import example.com.models.*
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.contentnegotiation.*
@@ -17,7 +15,7 @@ import java.util.*
 
 interface GeminiService {
     suspend fun generateCarPartsFromImage(image: ByteArray): Flow<GeminiReportData?>
-    fun generateRecommendedServices()
+    suspend fun generateRecommendedServices(carInfoModel: CarInfoModel): Flow<GeminiRecommendationModel?>
     suspend fun generateAlertSummary(alert: Alert): Flow<GeminiSummaryModel?>
 }
 
@@ -86,8 +84,61 @@ class GeminiServiceImpl : GeminiService {
         }
     }
 
-    override fun generateRecommendedServices() {
-
+    override suspend fun generateRecommendedServices(carInfoModel: CarInfoModel): Flow<GeminiRecommendationModel?> = flow {
+        val requestBody = """
+        {
+          "contents":[
+            {
+              "parts":[
+                {"text": "
+                    I am CarSeer, a car service recommendation system. I can provide you with up to 8 personalized maintenance recommendations based on your car's make, model, year, and current mileage.
+                    To get your recommendations, please tell me:
+                    Make: (e.g., Honda, Toyota, Ford). The current make is ${carInfoModel.make}
+                    Model: (e.g., Civic, Camry, F-150). The current model is ${carInfoModel.model}
+                    Year: (e.g., 2018, 2022). The current year is ${carInfoModel.year}
+                    Mileage: (e.g., 30000, 55000). The current mileage is ${carInfoModel.mileage}
+                    I will then generate a JSON response that includes the following information for each recommended service:
+                    serviceName: The name of the service (e.g., Oil Change, Tire Rotation)
+                    averagePrice: An estimated average cost in USD. An example would be $10.00
+                    description: A brief description of the service, tailored to your specific car model
+                    frequency: The general service interval (e.g., Every 30,000 miles)
+                    priority: A number from 1 to 10, indicating the urgency of the service, with 10 being the most urgent. This value should be driven by the mileage the car has and the model of the car! 
+                    It's very important to be consistent with the result! 
+                "},
+              ]
+            }
+          ],
+          "generationConfig": {
+                "stopSequences": [
+                    "Title"
+                ],
+                "temperature": 1.0,
+                "responseMimeType": "application/json"
+          }
+        }
+    """.trimIndent()
+        val apiKey = System.getenv("gemini_api_key") ?: ""
+        try {
+            val response =
+                client.post("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=$apiKey") {
+                    headers {
+                        append(HttpHeaders.Accept, ContentType.Application.Json)
+                    }
+                    setBody(requestBody)
+                }
+            println(response.bodyAsText())
+            val jsonObject = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+            val candidates = jsonObject["candidates"]?.jsonArray ?: emptyList()
+            val extractedText = candidates.mapNotNull { candidate ->
+                candidate.jsonObject["content"]?.jsonObject?.get("parts")?.jsonArray
+                    ?.find { it.jsonObject["text"] != null }?.jsonObject?.get("text")?.jsonPrimitive?.content
+            }
+            println(extractedText)
+            emit(Json.decodeFromString<GeminiRecommendationModel>(extractedText[0]))
+        } catch (e: Exception) {
+            println("error: ${e.localizedMessage}")
+            emit(null)
+        }
     }
 
     override suspend fun generateAlertSummary(alert: Alert): Flow<GeminiSummaryModel?> = flow {
