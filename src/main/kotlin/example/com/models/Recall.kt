@@ -1,6 +1,6 @@
 package example.com.models
 
-import com.google.gson.annotations.SerializedName
+
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -14,10 +14,10 @@ data class RecallsResponse(
 @Serializable
 data class RecallItem(
     val shortSummary: String,
-    @SerializedName("nhtsa_campaign_number")
+    @SerialName("nhtsa_campaign_number")
     val nhtsaCampaignNumber: String,
     val manufacturer:  String,
-    @SerializedName("report_received_date")
+    @SerialName("report_received_date")
     val reportReceivedDate: String,
     val component: String,
     val summary: String,
@@ -59,7 +59,7 @@ data class PublicRecallObjectData(
 @Serializable
 data class CompleteRecallRequest(
     val token: String,
-    @SerializedName("nhtsa_campaign_number")
+    @SerialName("nhtsa_campaign_number")
     val nhtsaCampaignNumber: String,
 )
 
