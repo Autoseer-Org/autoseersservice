@@ -14,6 +14,7 @@ data class AlertsResponse(
 
 @Serializable
 data class Alert(
+    val id: String,
     val name: String,
     val category: String,
     val updatedDate: String,

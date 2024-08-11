@@ -1,6 +1,7 @@
 package example.com.plugins
 
 import com.google.cloud.firestore.DocumentReference
+import com.google.cloud.firestore.FieldValue
 import com.google.cloud.firestore.Firestore
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.cloud.FirestoreClient
@@ -11,6 +12,7 @@ import example.com.services.VerificationState
 import example.com.services.VerificationTokenServiceImpl
 import io.ktor.http.*
 import io.ktor.server.application.*
+import io.ktor.server.engine.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
@@ -26,6 +28,202 @@ fun Application.configureRouting() {
 
     val firestore: Firestore = FirestoreClient.getFirestore()
     routing {
+        post("/pollBookingStatus") {
+            val request = call.receive<PollBookingStatusRequest>()
+            verificationTokenService.verifyAndCheckForTokenRevoked(request.token, true)
+                .collectLatest { verificationStatus ->
+                    if (verificationStatus is VerificationState.VerificationStateSuccess) {
+                        val uid = verificationStatus.firebaseToken?.uid ?: ""
+                        if (uid.isBlank()) {
+                            call.respond(
+                                HttpStatusCode.OK, PollBookingStatusResponse(
+                                    BookingState.CANCELLED,
+                                    failure = "Could not process request. Try again later"
+                                )
+                            )
+                        }
+                        val userDoc = firestore.collection("users").document(uid)
+                        try {
+                            val userData = userDoc.get().get().data
+                            if (userData.isNullOrEmpty()) {
+                                call.respond(
+                                    HttpStatusCode.BadRequest, PollBookingStatusResponse(
+                                        BookingState.CANCELLED,
+                                        failure = "" +
+                                                "Could not process request. Try again later"
+                                    )
+                                )
+                            }
+                            val carInfoRef = userData?.get("carInfoRef") as? DocumentReference
+                            val carInfoData = carInfoRef?.get()?.get()?.data
+                            if (carInfoData.isNullOrEmpty() || userData["carInfoRef"] == "") {
+                                call.respond(
+                                    HttpStatusCode.InternalServerError, MarkAsRepairedResponse(
+                                        failure = "Could not process request. Try again later"
+                                    )
+                                )
+                            }
+
+                            val carPartScheduledServiceRef = carInfoRef
+                                ?.collection("carPartScheduledService")
+                                ?.document(request.partId)
+
+                            val carPartScheduledServiceData = carPartScheduledServiceRef?.get()?.get()?.data
+                            if (carPartScheduledServiceData.isNullOrEmpty()) {
+                                call.respond(
+                                    HttpStatusCode.OK, BookingResponse()
+                                )
+                            }
+                            call.respond(
+                                HttpStatusCode.OK, PollBookingStatusResponse(
+                                    state = BookingState
+                                        .fromString(
+                                            carPartScheduledServiceData
+                                                ?.get("bookingState")
+                                                .toString()
+                                        ),
+                                )
+                            )
+                        } catch (e: Exception) {
+                            logError(call, e)
+                            call.respond(
+                                HttpStatusCode.InternalServerError,
+                                MarkAsRepairedResponse(failure = e.localizedMessage)
+                            )
+                        }
+                    }
+                }
+        }
+        post("/markAsRepaired") {
+            val request = call.receive<MarkAsRepairedRequest>()
+            verificationTokenService.verifyAndCheckForTokenRevoked(request.token, true)
+                .collectLatest { verificationStatus ->
+                    if (verificationStatus is VerificationState.VerificationStateSuccess) {
+                        val uid = verificationStatus.firebaseToken?.uid ?: ""
+                        if (uid.isBlank()) {
+                            call.respond(
+                                HttpStatusCode.OK, BookingResponse(
+                                    failure = "" +
+                                            "Could not process request. Try again later"
+                                )
+                            )
+                        }
+                        val userDoc = firestore.collection("users").document(uid)
+                        try {
+                            val userData = userDoc.get().get().data
+                            if (userData.isNullOrEmpty()) {
+                                call.respond(
+                                    HttpStatusCode.BadRequest, MarkAsRepairedResponse(
+                                        failure = "" +
+                                                "Could not process request. Try again later"
+                                    )
+                                )
+                            }
+                            val carInfoRef = userData?.get("carInfoRef") as? DocumentReference
+                            val carInfoData = carInfoRef?.get()?.get()?.data
+                            if (carInfoData.isNullOrEmpty() || userData?.get("carInfoRef") == "") {
+                                call.respond(
+                                    HttpStatusCode.InternalServerError, MarkAsRepairedResponse(
+                                        failure = "" +
+                                                "Could not process request. Try again later"
+                                    )
+                                )
+                            }
+                            userDoc.update(
+                                mapOf(
+                                    "repairs" to (userData?.get("repairs") as Long).plus(1),
+                                )
+                            )
+                            val carPartStatusRef = carInfoRef
+                                ?.collection("carPartsStatus")
+                                ?.document(request.partId)
+
+                            val carPartStatusData = carPartStatusRef?.get()?.get()?.data
+                            if (carPartStatusData.isNullOrEmpty()) {
+                                call.respond(
+                                    HttpStatusCode.OK, BookingResponse()
+                                )
+                            }
+                            carPartStatusRef?.update(mapOf(
+                                "status" to "Good"
+                            ))
+                            call.respond(
+                                HttpStatusCode.OK, MarkAsRepairedResponse()
+                            )
+                        } catch (e: Exception) {
+                            logError(call, e)
+                            call.respond(
+                                HttpStatusCode.InternalServerError,
+                                MarkAsRepairedResponse(failure = e.localizedMessage)
+                            )
+                        }
+                    }
+                }
+        }
+        post("/bookAppointment") {
+            val request = call.receive<BookingRequest>()
+            verificationTokenService
+                .verifyAndCheckForTokenRevoked(token = request.token, true)
+                .collectLatest { verificationStatus ->
+                    if (verificationStatus is VerificationState.VerificationStateSuccess) {
+                        val uid = verificationStatus.firebaseToken?.uid ?: ""
+                        if (uid.isBlank()) {
+                            call.respond(
+                                HttpStatusCode.OK, BookingResponse(
+                                    failure = "" +
+                                            "Could not process booking. Try again later"
+                                )
+                            )
+                        }
+                        val userDoc = firestore.collection("users").document(uid)
+                        try {
+                            val userData = userDoc.get().get().data
+                            if (userData.isNullOrEmpty()) {
+                                call.respond(
+                                    HttpStatusCode.BadRequest, BookingResponse(
+                                        failure = "" +
+                                                "Could not process booking. Try again later"
+                                    )
+                                )
+                            }
+                            val carInfoRef = userData?.get("carInfoRef") as? DocumentReference
+                            val carInfoData = carInfoRef?.get()?.get()?.data
+                            if (carInfoData.isNullOrEmpty() || userData?.get("carInfoRef") == "") {
+                                call.respond(
+                                    HttpStatusCode.InternalServerError, BookingResponse(
+                                        failure = "" +
+                                                "Could not process booking. Try again later"
+                                    )
+                                )
+                            }
+                            val carPartStatusRef = carInfoRef
+                                ?.collection("carPartsStatus")
+                                ?.document(request.id)
+
+                            carInfoRef
+                                ?.collection("carPartScheduledService")
+                                ?.document(request.id)
+                                ?.set(mapOf(
+                                    "place" to request.place,
+                                    "hasBeenBooked" to false,
+                                    "bookingState" to BookingState.WAITING_TO_BE_BOOKED,
+                                    "carPartStatusRef" to carPartStatusRef,
+                                    "scheduledFor" to request.timeDate,
+                                    "email" to request.email
+                                ))
+                            call.respond(
+                                HttpStatusCode.OK, BookingResponse()
+                            )
+                        } catch (e: Exception) {
+                            logError(call, e)
+                            call.respond(
+                                HttpStatusCode.InternalServerError,
+                                BookingResponse(failure = e.localizedMessage)
+                            )
+                        }
+                    }
+                }
+        }
         get("/") {
             call.respondText("Hello World!")
         }
@@ -69,8 +267,9 @@ fun Application.configureRouting() {
                                     val part = Alert(
                                         name = it.data["name"] as String,
                                         category = it.data["category"] as String,
-                                        updatedDate = (it.data["updatedDate"] ).toString(),
+                                        updatedDate = (it.data["updatedDate"]).toString(),
                                         status = it.data["status"] as String,
+                                        id = it.id
                                     )
                                     geminiService.generateAlertSummary(alert = part).collect { geminiResponse ->
                                         part.summary = geminiResponse?.summary ?: ""
@@ -88,18 +287,19 @@ fun Application.configureRouting() {
                                     val part = Alert(
                                         name = it.data["name"] as String,
                                         category = it.data["category"] as String,
-                                        updatedDate = (it.data["updatedDate"] as Timestamp).toString(),
+                                        updatedDate = (it.data["updatedDate"]).toString(),
                                         status = it.data["status"] as String,
+                                        id = it.id
                                     )
                                     geminiService.generateAlertSummary(alert = part).collect { geminiResponse ->
                                         part.summary = geminiResponse?.summary ?: ""
                                     }
                                     alertsResponse.data?.add(part)
-                                    alertsResponse.data?.add(part)
                                 }
                                 call.respond(HttpStatusCode.OK, alertsResponse)
                             }
                         } catch (e: Exception) {
+                            logError(call, e)
                             call.respond(
                                 HttpStatusCode.InternalServerError,
                                 AlertsResponse()
@@ -127,57 +327,60 @@ fun Application.configureRouting() {
                             .document(uid)
                             try {
                                 var homeResponse = HomeResponse()
-                                val userData = withContext(Dispatchers.IO + context) {
-                                    userDoc.get().get()
-                                }.data
+                                val userData = userDoc.get().get().data
                                 if (userData == null) {
                                     call.respond(HttpStatusCode.OK, homeResponse)
                                 }
-                                val carInfoRef = userData?.get("carInfoRef") as DocumentReference
-                                val carInfo = withContext(Dispatchers.IO + context) {
-                                    carInfoRef.get().get()
+                                val carInfoRef = if (userData?.get("carInfoRef") == "") {
+                                    null
+                                } else {
+                                    userData?.get("carInfoRef") as? DocumentReference
                                 }
-                                if (carInfo?.data?.isEmpty() == true) {
+                                val carInfo = carInfoRef?.get()?.get()
+                                if (carInfo?.exists() == false || carInfoRef == null) {
                                     call.respond(HttpStatusCode.OK, homeResponse)
                                 } else {
                                     homeResponse = homeResponse.copy(
                                         data = HomeData(
-                                            mileage = carInfo.data?.get("mileage").toString().toIntOrNull() ?: 0,
-                                            healthScore = carInfo.data?.get("carHealth").toString().toIntOrNull() ?: 0,
-                                            model = carInfo.data?.get("model").toString(),
-                                            make = carInfo.data?.get("make").toString(),
+                                            mileage = carInfo?.data?.get("mileage").toString().toIntOrNull() ?: 0,
+                                            healthScore = carInfo?.data?.get("carHealth").toString().toIntOrNull() ?: 0,
+                                            model = carInfo?.data?.get("model").toString(),
+                                            make = carInfo?.data?.get("make").toString(),
+                                            repairs = (userData?.get("repairs") as Long).toInt(),
+                                            reports = (userData["uploads"] as Long).toInt(),
                                         ),
                                     )
                                     val mediumParts = carInfo
-                                        .reference
-                                        .collection("carPartsStatus")
-                                        .whereEqualTo("status", "Medium")
-                                        .get()
+                                        ?.reference
+                                        ?.collection("carPartsStatus")
+                                        ?.whereEqualTo("status", "Medium")
+                                        ?.get()
 
                                     val mediumPartRef =
                                         withContext(Dispatchers.IO + context) {
-                                            mediumParts.get()
-                                        }.size()
+                                            mediumParts?.get()
+                                        }?.size()
                                     homeResponse = homeResponse.copy(homeResponse.data?.copy(alerts = mediumPartRef))
 
                                     val badParts = carInfo
-                                        .reference
-                                        .collection("carPartsStatus")
-                                        .whereEqualTo("status", "Bad")
-                                        .get()
+                                        ?.reference
+                                        ?.collection("carPartsStatus")
+                                        ?.whereEqualTo("status", "Bad")
+                                        ?.get()
                                     val badPartsRef =
                                         withContext(Dispatchers.IO + context) {
-                                            badParts.get()
-                                        }.size()
+                                            badParts?.get()
+                                        }?.size()
                                     homeResponse = homeResponse.copy(
                                         homeResponse.data?.copy(
-                                            alerts = homeResponse.data?.alerts
-                                                ?: (0 + badPartsRef)
+                                            alerts = (homeResponse.data?.alerts?.plus(badPartsRef ?: 0))
+                                                ?: (0 + (badPartsRef ?: 0))
                                         )
                                     )
                                     call.respond(HttpStatusCode.OK, homeResponse)
                                 }
                             } catch (e: Exception) {
+                                logError(call, e)
                                 call.respond(
                                     HttpStatusCode.InternalServerError,
                                     HomeResponse(failure = e.localizedMessage))
@@ -216,12 +419,23 @@ fun Application.configureRouting() {
                                                 HttpStatusCode.BadRequest,
                                                 UploadResponse(failure = "No user found"))
                                         }
-                                        val carInfoRef = userData?.get("carInfoRef") as? DocumentReference
-                                        if (carInfoRef?.get()?.get()?.data == null) {
+                                        val carInfoRef = if (userData?.get("carInfoRef") == "") {
+                                            null
+                                        } else {
+                                            userData?.get("carInfoRef") as DocumentReference
+                                        }
+                                        val carInfoRefData = carInfoRef?.get()?.get()?.data
+                                        if (carInfoRefData.isNullOrEmpty()) {
                                             if (carReportData != null) {
-                                                val carInfoRef = firestore.collection("carInfo")
+                                                val newCarInfoRef = firestore.collection("carInfo")
                                                     .document()
-                                                carInfoRef.set(mapOf(
+                                                userDoc.update(
+                                                    mapOf(
+                                                        "carInfoRef" to newCarInfoRef,
+                                                        "uploads" to FieldValue.increment(1),
+                                                    )
+                                                )
+                                                newCarInfoRef.set(mapOf(
                                                     "make" to carReportData.carMake,
                                                     "mileage" to carReportData.carMileage,
                                                     "model" to carReportData.carModel,
@@ -229,7 +443,7 @@ fun Application.configureRouting() {
                                                     "carHealth" to carReportData.healthScore,
                                                 ))
                                                 carReportData.parts.forEach { part ->
-                                                    carInfoRef
+                                                    newCarInfoRef
                                                         .collection("carPartsStatus")
                                                         .document()
                                                         .set(mapOf(
@@ -241,6 +455,11 @@ fun Application.configureRouting() {
                                                 }
                                             }
                                         } else {
+                                            userDoc.update(
+                                                mapOf(
+                                                    "uploads" to FieldValue.increment(1),
+                                                )
+                                            )
                                             carInfoRef.update(
                                                 mapOf(
                                                     "make" to carReportData?.carMake,
@@ -265,6 +484,7 @@ fun Application.configureRouting() {
                                         // Store carInfoReference and set it to the user's doc
                                         // Store Gemini API key in GCP!
                                     }catch(e: Exception) {
+                                        logError(call, e)
                                         call.respond(
                                             HttpStatusCode.InternalServerError,
                                             UploadResponse(failure = e.localizedMessage))
@@ -306,6 +526,9 @@ fun Application.configureRouting() {
                         is VerificationState.VerificationStateSuccess -> {
                             val userObj: Map<String, Any> = hashMapOf(
                                 "name" to request.name,
+                                "carInfoRef" to "",
+                                "repairs" to 0,
+                                "uploads" to 0,
                             )
 
                             try {
@@ -326,6 +549,7 @@ fun Application.configureRouting() {
                                     call.respond(HttpStatusCode.Created, CreateUserProfileResponse())
                                 }
                             } catch (e: Exception) {
+                                logError(call, e)
                                 call.respond(
                                     HttpStatusCode.InternalServerError, CreateUserProfileResponse(
                                         failure = e.localizedMessage
