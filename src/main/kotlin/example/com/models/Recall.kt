@@ -55,12 +55,12 @@ data class PublicRecallObjectData(
 )
 
 @Serializable
-data class RecallItemUpdateRequest(
+data class CompleteRecallRequest(
     val token: String,
     val nhtsaCampaignNumber: String,
 )
 
 @Serializable
-data class RecallItemUpdateResonse(
+data class CompleteRecallResponse(
     val failure: String? = null,
 )

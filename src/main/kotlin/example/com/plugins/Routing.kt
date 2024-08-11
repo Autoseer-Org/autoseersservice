@@ -863,7 +863,7 @@ fun Application.configureRouting() {
 
         post("/completeRecall") {
             val context = this.coroutineContext
-            val request = call.receive<RecallItemUpdateRequest>()
+            val request = call.receive<CompleteRecallRequest>()
             val token = request.token
             verificationTokenService
                 .verifyAndCheckForTokenRevoked(token = token, getFirebaseToken = true)
@@ -873,20 +873,20 @@ fun Application.configureRouting() {
                             verificationState.error?.let { errorState ->
                                 if (errorState == VerificationErrorState.TokenRevoked) call.respond(
                                     HttpStatusCode.Unauthorized,
-                                    RecallItemUpdateResonse("Authorization token has expired")
+                                    CompleteRecallResponse("Authorization token has expired")
                                 )
                                 if (errorState == VerificationErrorState.MissingToken) call.respond(
                                     HttpStatusCode.Unauthorized,
-                                    RecallItemUpdateResonse("\"Missing authorization token\"")
+                                    CompleteRecallResponse("\"Missing authorization token\"")
                                 )
                                 if (errorState == VerificationErrorState.FailedToParseToken) call.respond(
                                     HttpStatusCode.BadRequest,
-                                    RecallItemUpdateResonse("Failed to update recall")
+                                    CompleteRecallResponse("Failed to update recall")
                                 )
                             }
                             call.respond(
                                 HttpStatusCode.BadRequest,
-                                RecallItemUpdateResonse("Failed to update recall")
+                                CompleteRecallResponse("Failed to update recall")
                             )
                         }
 
