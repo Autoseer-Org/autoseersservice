@@ -902,30 +902,33 @@ fun Application.configureRouting() {
                                 if (userData == null) {
                                     call.respond(
                                         HttpStatusCode.BadRequest,
-                                        ManualEntryResponse("User not found")
+                                        CompleteRecallResponse("User not found")
                                     )
                                 }
                                 val carInfoRef = userData?.get("carInfoRef") as DocumentReference
                                 if (carInfoRef.get().get().data == null) {
                                     call.respond(
                                         HttpStatusCode.BadRequest,
-                                        ManualEntryResponse("Car info not found")
+                                        CompleteRecallResponse("Car info not found")
                                     )
                                 }
                                 val recallsItemRef = carInfoRef?.collection("recalls")?.whereEqualTo("nhtsaCamapaignNumber", request.nhtsaCampaignNumber)?.get() as DocumentReference
                                 if (recallsItemRef.get().get().data == null) {
                                     call.respond(
                                         HttpStatusCode.BadRequest,
-                                        ManualEntryResponse("Recall not found")
+                                        CompleteRecallResponse("Recall not found")
                                     )
                                 }
                                 recallsItemRef.update(mapOf(
                                     "status" to "COMPLETE",
                                 ))
+                                call.respond(
+                                    HttpStatusCode.OK, CompleteRecallResponse()
+                                )
                             } catch (e: Exception) {
                                 call.respond(
                                     HttpStatusCode.InternalServerError,
-                                    HomeResponse(failure = e.localizedMessage))
+                                    CompleteRecallResponse(failure = e.localizedMessage))
                             }
                         }
                     }
