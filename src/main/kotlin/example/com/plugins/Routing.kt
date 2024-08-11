@@ -479,16 +479,64 @@ fun Application.configureRouting() {
                                 recallService
                                     .queryRecallStatus(year, make, model)
                                     .collectLatest { publicRecallResponse ->
-                                        val recallsSubcollectionRef = carInfoRef?.collection("recalls")
-                                        if (recallsSubcollectionRef == null) {
-                                            call.respond(HttpStatusCode.OK, RecallsResponse(0))
-                                            return@collectLatest
-                                        }
-                                        val numRecallsStored = recallsSubcollectionRef?.get()?.get()?.size()
-                                        val campaignNumbers = HashSet<String>()
-                                        val querySnapshot = recallsSubcollectionRef?.get()
-                                        var recallsResponse = RecallsResponse(numRecallsStored)
-                                        if (publicRecallResponse == null) {
+                                        try {
+                                            val recallsSubcollectionRef = carInfoRef?.collection("recalls")
+                                            if (recallsSubcollectionRef == null) {
+                                                call.respond(HttpStatusCode.OK, RecallsResponse(0))
+                                                return@collectLatest
+                                            }
+                                            val numRecallsStored = recallsSubcollectionRef?.get()?.get()?.size()
+                                            val campaignNumbers = HashSet<String>()
+                                            val querySnapshot = recallsSubcollectionRef?.get()
+                                            var recallsResponse = RecallsResponse(numRecallsStored)
+                                            if (publicRecallResponse == null) {
+                                                recallsResponse = recallsResponse.copy(
+                                                    count = numRecallsStored,
+                                                    recalls = querySnapshot?.get()?.documents?.map { document ->
+                                                        RecallItem(
+                                                            shortSummary = document.get("shortSummary").toString(),
+                                                            nhtsaCampaignNumber = document.get("nhtsaCampaignNumber").toString(),
+                                                            manufacturer = document.get("manufacturer").toString(),
+                                                            reportReceivedDate = document.get("reportReceivedDate").toString(),
+                                                            component = document.get("component").toString(),
+                                                            summary = document.get("summary").toString(),
+                                                            consequence = document.get("consequence").toString(),
+                                                            remedy = document.get("remedy").toString(),
+                                                            notes = document.get("notes").toString(),
+                                                            status = document.get("status").toString(),
+                                                        )
+                                                    },
+                                                )
+                                                call.respond(HttpStatusCode.OK, recallsResponse)
+                                                return@collectLatest
+                                            }
+                                            querySnapshot?.get()?.documents?.forEach { document ->
+                                                val campaignNumber = document.get("nhtsaCampaignNumber") as? String ?: ""
+                                                campaignNumbers.add(campaignNumber)
+                                            }
+                                            if (numRecallsStored != publicRecallResponse.count) {
+                                                recallService.removeDuplicateRecallItems(publicRecallResponse, campaignNumbers)
+                                                geminiService
+                                                    .generateShortSummariesForRecalls(publicRecallResponse)
+                                                    .collectLatest { geminiRecallShortSummaryData ->
+                                                        geminiRecallShortSummaryData?.recallsItems?.forEachIndexed { idx, recallShortSummaryItem ->
+                                                            val recallRef = recallsSubcollectionRef?.document()
+                                                            val publicRecallObjectData = publicRecallResponse.results[idx]
+                                                            recallRef?.set(mapOf(
+                                                                "shortSummary" to recallShortSummaryItem.title,
+                                                                "nhtsaCampaignNumber" to publicRecallObjectData.nhtsaCampaignNumber,
+                                                                "manufacturer" to publicRecallObjectData.manufacturer,
+                                                                "reportReceivedDate" to publicRecallObjectData.reportReceivedDate,
+                                                                "component" to publicRecallObjectData.component,
+                                                                "summary" to publicRecallObjectData.summary,
+                                                                "consequence" to publicRecallObjectData.consequence,
+                                                                "remedy" to publicRecallObjectData.remedy,
+                                                                "notes" to publicRecallObjectData.notes,
+                                                                "status" to "INCOMPLETE"
+                                                            ))
+                                                        }
+                                                    }
+                                            }
                                             recallsResponse = recallsResponse.copy(
                                                 count = numRecallsStored,
                                                 recalls = querySnapshot?.get()?.documents?.map { document ->
@@ -507,53 +555,11 @@ fun Application.configureRouting() {
                                                 },
                                             )
                                             call.respond(HttpStatusCode.OK, recallsResponse)
-                                            return@collectLatest
+                                        } catch (e: Exception) {
+                                            call.respond(
+                                                HttpStatusCode.InternalServerError,
+                                                HomeResponse(failure = e.localizedMessage))
                                         }
-                                        querySnapshot?.get()?.documents?.forEach { document ->
-                                            val campaignNumber = document.get("nhtsaCampaignNumber") as? String ?: ""
-                                            campaignNumbers.add(campaignNumber)
-                                        }
-                                        if (numRecallsStored != publicRecallResponse.count) {
-                                            recallService.removeDuplicateRecallItems(publicRecallResponse, campaignNumbers)
-                                            geminiService
-                                                .generateShortSummariesForRecalls(publicRecallResponse)
-                                                .collectLatest { geminiRecallShortSummaryData ->
-                                                    geminiRecallShortSummaryData?.recallsItems?.forEachIndexed { idx, recallShortSummaryItem ->
-                                                        val recallRef = recallsSubcollectionRef?.document()
-                                                        val publicRecallObjectData = publicRecallResponse.results[idx]
-                                                        recallRef?.set(mapOf(
-                                                            "shortSummary" to recallShortSummaryItem.title,
-                                                            "nhtsaCampaignNumber" to publicRecallObjectData.nhtsaCampaignNumber,
-                                                            "manufacturer" to publicRecallObjectData.manufacturer,
-                                                            "reportReceivedDate" to publicRecallObjectData.reportReceivedDate,
-                                                            "component" to publicRecallObjectData.component,
-                                                            "summary" to publicRecallObjectData.summary,
-                                                            "consequence" to publicRecallObjectData.consequence,
-                                                            "remedy" to publicRecallObjectData.remedy,
-                                                            "notes" to publicRecallObjectData.notes,
-                                                            "status" to "INCOMPLETE"
-                                                        ))
-                                                    }
-                                                }
-                                        }
-                                        recallsResponse = recallsResponse.copy(
-                                            count = numRecallsStored,
-                                            recalls = querySnapshot?.get()?.documents?.map { document ->
-                                                RecallItem(
-                                                    shortSummary = document.get("shortSummary").toString(),
-                                                    nhtsaCampaignNumber = document.get("nhtsaCampaignNumber").toString(),
-                                                    manufacturer = document.get("manufacturer").toString(),
-                                                    reportReceivedDate = document.get("reportReceivedDate").toString(),
-                                                    component = document.get("component").toString(),
-                                                    summary = document.get("summary").toString(),
-                                                    consequence = document.get("consequence").toString(),
-                                                    remedy = document.get("remedy").toString(),
-                                                    notes = document.get("notes").toString(),
-                                                    status = document.get("status").toString(),
-                                                )
-                                            },
-                                        )
-                                        call.respond(HttpStatusCode.OK, recallsResponse)
                                     }
 
                             } catch (e: Exception) {
