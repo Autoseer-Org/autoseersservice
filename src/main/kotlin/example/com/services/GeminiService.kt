@@ -31,6 +31,10 @@ class GeminiServiceImpl : GeminiService {
         }
     }
 
+    private fun geminiApiKey(): String {
+        return System.getenv("gemini_api_key") ?: ""
+    }
+
     override suspend fun generateCarPartsFromImage(image: ByteArray): Flow<GeminiReportData?> = flow {
         val based64Image = Base64.getEncoder().encodeToString(image)
         val requestBody = """
@@ -63,7 +67,7 @@ class GeminiServiceImpl : GeminiService {
           }
         }
     """.trimIndent()
-        val apiKey = System.getenv("gemini_api_key") ?: ""
+        val apiKey = geminiApiKey()
        try {
             val response =
                 client.post("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=$apiKey") {
@@ -119,7 +123,7 @@ class GeminiServiceImpl : GeminiService {
           }
         }
     """.trimIndent()
-        val apiKey = System.getenv("gemini_api_key") ?: ""
+        val apiKey = geminiApiKey()
         try {
             val response =
                 client.post("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=$apiKey") {
@@ -166,7 +170,7 @@ class GeminiServiceImpl : GeminiService {
           }
         }
     """.trimIndent()
-        val apiKey = System.getenv("gemini_api_key") ?: ""
+        val apiKey = geminiApiKey()
         try {
             val response =
                 client.post("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=$apiKey") {
@@ -217,7 +221,7 @@ class GeminiServiceImpl : GeminiService {
           }
         }
     """.trimIndent()
-        val apiKey = System.getenv("gemini_api_key") ?: ""
+        val apiKey = geminiApiKey()
         try {
             val response =
                 client.post("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=$apiKey") {
