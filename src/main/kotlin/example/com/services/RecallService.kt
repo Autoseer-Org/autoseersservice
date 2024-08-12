@@ -10,6 +10,7 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.append
 import io.ktor.http.headers
+import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.json.Json
@@ -40,13 +41,9 @@ class RecallServiceImpl: RecallService {
             }
             println(response.bodyAsText())
             val jsonObject = Json.parseToJsonElement(response.bodyAsText()).jsonObject
-            val candidates = jsonObject["candidates"]?.jsonArray ?: emptyList()
-            val extractedText = candidates.mapNotNull { candidate ->
-                candidate.jsonObject["content"]?.jsonObject?.get("parts")?.jsonArray
-                    ?.find { it.jsonObject["text"] != null }?.jsonObject?.get("text")?.jsonPrimitive?.content
-            }
-            println(extractedText)
-            emit(Json.decodeFromString<PublicRecallResponse>(extractedText[0]))
+            val jsonString = jsonObject.toString()
+            println(jsonObject)
+            emit(Json.decodeFromString<PublicRecallResponse>(jsonString))
         } catch (e: Exception) {
             println("error: ${e.localizedMessage}")
             emit(null)
