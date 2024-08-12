@@ -24,7 +24,7 @@ repositories {
     mavenCentral()
 }
 
-val ktor_version: String by project
+val ktor_version = "2.3.12"
 dependencies {
     implementation(kotlin("reflect"))
     implementation("io.ktor:ktor-server-content-negotiation-jvm")
@@ -40,7 +40,7 @@ dependencies {
     testImplementation("io.ktor:ktor-server-tests-jvm")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:$kotlin_version")
 
-    implementation("io.ktor:ktor-server-status-pages:2.3.12")
+    implementation("io.ktor:ktor-server-status-pages:$ktor_version")
 
     implementation("io.ktor:ktor-client-core:$ktor_version")
     implementation("io.ktor:ktor-client-cio:$ktor_version")
