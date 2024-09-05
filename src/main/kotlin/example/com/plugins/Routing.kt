@@ -329,6 +329,12 @@ fun Application.configureRouting() {
                                 val mediumPartRef = mediumParts.get()
 
                                 mediumPartRef.forEach {
+                                    val partDoc = carInfo
+                                        .reference
+                                        .collection("carPartsStatus")
+                                        .document(it.id)
+
+                                    val description = partDoc.get().get().data?.get("description").toString().takeIf { desc -> desc.isBlank().not() }
                                     val part = Alert(
                                         name = it.data["name"] as String,
                                         category = it.data["category"] as String,
@@ -336,8 +342,15 @@ fun Application.configureRouting() {
                                         status = it.data["status"] as String,
                                         id = it.id
                                     )
-                                    geminiService.generateAlertSummary(alert = part).collect { geminiResponse ->
-                                        part.summary = geminiResponse?.summary ?: ""
+                                    if (description.isNullOrEmpty()) {
+                                        geminiService.generateAlertSummary(alert = part).collect { geminiResponse ->
+                                            part.summary = geminiResponse?.summary ?: ""
+                                        }
+                                        partDoc.update(mapOf(
+                                            "description" to part.summary
+                                        ))
+                                    } else {
+                                        part.summary = description
                                     }
                                     alertsResponse.data?.add(part)
                                 }
@@ -349,6 +362,11 @@ fun Application.configureRouting() {
                                     .get()
                                 val badPartsRef = badParts.get()
                                 badPartsRef.forEach {
+                                    val partDoc = carInfo
+                                        .reference
+                                        .collection("carPartsStatus")
+                                        .document(it.id)
+                                    val description = partDoc.get().get().data?.get("description").toString().takeIf { desc -> desc.isBlank().not() }
                                     val part = Alert(
                                         name = it.data["name"] as String,
                                         category = it.data["category"] as String,
@@ -356,8 +374,15 @@ fun Application.configureRouting() {
                                         status = it.data["status"] as String,
                                         id = it.id
                                     )
-                                    geminiService.generateAlertSummary(alert = part).collect { geminiResponse ->
-                                        part.summary = geminiResponse?.summary ?: ""
+                                    if (description.isNullOrEmpty()) {
+                                        geminiService.generateAlertSummary(alert = part).collect { geminiResponse ->
+                                            part.summary = geminiResponse?.summary ?: ""
+                                        }
+                                        partDoc.update(mapOf(
+                                            "description" to part.summary
+                                        ))
+                                    } else {
+                                        part.summary = description
                                     }
                                     alertsResponse.data?.add(part)
                                 }
@@ -525,19 +550,33 @@ fun Application.configureRouting() {
                                                     "uploads" to FieldValue.increment(1),
                                                 )
                                             )
+                                            if (carInfoRefData["make"] == "" || carInfoRefData["model"] == "" || carInfoRefData["year"] == "") {
+                                                carInfoRef.update(
+                                                    mapOf(
+                                                        "make" to carReportData?.carMake,
+                                                        "mileage" to carReportData?.carMileage,
+                                                        "model" to carReportData?.carModel,
+                                                        "year" to carReportData?.carYear,
+                                                        "carHealth" to carReportData?.healthScore,
+                                                    ))
+                                            }
                                             carInfoRef.update(
                                                 mapOf(
-                                                    "make" to carReportData?.carMake,
-                                                    "mileage" to carReportData?.carMileage,
-                                                    "model" to carReportData?.carModel,
-                                                    "year" to carReportData?.carYear,
                                                     "carHealth" to carReportData?.healthScore,
-                                            ))
+                                                ))
+                                            val docs = carInfoRef
+                                                .collection("carPartsStatus")
+                                                .get()
+                                                .get()
+                                                .documents
+                                            for (doc in docs) {
+                                                carInfoRef.collection("carPartsStatus").document(doc.id).delete()
+                                            }
                                             carReportData?.parts?.forEach { part ->
                                                 carInfoRef
                                                     .collection("carPartsStatus")
                                                     .document()
-                                                    .update(mapOf(
+                                                    .set(mapOf(
                                                         "category" to part.category,
                                                         "name" to part.partName,
                                                         "status" to part.status,
@@ -672,7 +711,7 @@ fun Application.configureRouting() {
                                 val make = request.make.ifBlank {
                                     carInfoData?.get("make") ?: ""
                                 }
-                                val mileage = request.mileage.ifBlank {
+                                val mileage = request.mileage?.ifBlank {
                                     carInfoData?.get("mileage") ?: ""
                                 }
                                 val model = request.model.ifBlank {
@@ -683,7 +722,6 @@ fun Application.configureRouting() {
                                 }
                                 carInfoRef.set(mapOf(
                                     "make" to make,
-                                    "mileage" to mileage,
                                     "model" to model,
                                     "year" to year,
                                     "carHealth" to (carInfoData?.get("carHealth") ?: ""),

@@ -8,7 +8,7 @@ data class ManualEntryRequest(
     val year: String,
     val make: String,
     val model: String,
-    val mileage: String,
+    val mileage: String?,
 )
 
 @Serializable
