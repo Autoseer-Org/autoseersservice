@@ -724,6 +724,7 @@ fun Application.configureRouting() {
                                     "make" to make,
                                     "model" to model,
                                     "year" to year,
+                                    "mileage" to mileage,
                                     "carHealth" to (carInfoData?.get("carHealth") ?: ""),
                                 ))
                                 call.respond(HttpStatusCode.OK, ManualEntryResponse())
