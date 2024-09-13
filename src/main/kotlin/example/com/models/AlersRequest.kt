@@ -9,7 +9,8 @@ data class AlertsRequest(
 
 @Serializable
 data class AlertsResponse(
-    val data: MutableList<Alert>? = null
+    val data: MutableList<Alert>? = null,
+    val failure: String = ""
 )
 
 @Serializable
