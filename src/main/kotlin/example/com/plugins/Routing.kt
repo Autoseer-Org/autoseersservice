@@ -74,7 +74,7 @@ fun Application.configureRouting() {
                                     ).collectLatest { geminiRecommendations ->
                                         if (geminiRecommendations == null) {
                                             call.respond(
-                                                HttpStatusCode.BadRequest, RecommendationsResponse(
+                                                HttpStatusCode.InternalServerError, RecommendationsResponse(
                                                     error = "Failure to fetch recommendations: Failed to produce response from gemini"
                                                 )
                                             )
@@ -97,6 +97,12 @@ fun Application.configureRouting() {
                                 )
                             )
                         }
+                    }
+                    else {
+                        call.respond(
+                            HttpStatusCode.Unauthorized,
+                            RecommendationsResponse(error = "Failure to fetch recommendations: Authorization token not valid")
+                        )
                     }
                 }
         }
@@ -179,7 +185,7 @@ fun Application.configureRouting() {
                         val uid = verificationStatus.firebaseToken?.uid ?: ""
                         if (uid.isBlank()) {
                             call.respond(
-                                HttpStatusCode.BadRequest, BookingResponse(
+                                HttpStatusCode.InternalServerError, BookingResponse(
                                     failure = "Failure to mark part as repaired: User profile not found"
                                 )
                             )
@@ -189,7 +195,7 @@ fun Application.configureRouting() {
                             val userData = userDoc.get().get().data
                             if (userData.isNullOrEmpty()) {
                                 call.respond(
-                                    HttpStatusCode.BadRequest, MarkAsRepairedResponse(
+                                    HttpStatusCode.InternalServerError, MarkAsRepairedResponse(
                                         failure = "Failure to mark part as repaired: User profile not found"
                                     )
                                 )
@@ -198,7 +204,7 @@ fun Application.configureRouting() {
                             val carInfoData = carInfoRef?.get()?.get()?.data
                             if (carInfoData.isNullOrEmpty() || userData?.get("carInfoRef") == "") {
                                 call.respond(
-                                    HttpStatusCode.BadRequest, MarkAsRepairedResponse(
+                                    HttpStatusCode.InternalServerError, MarkAsRepairedResponse(
                                         failure = "Failure to mark part as repaired: Car info not found"
                                     )
                                 )
@@ -232,6 +238,12 @@ fun Application.configureRouting() {
                             )
                         }
                     }
+                    else {
+                        call.respond(
+                            HttpStatusCode.Unauthorized,
+                            MarkAsRepairedResponse(failure = "Failure to mark part as repaired: Authorization token not valid")
+                        )
+                    }
                 }
         }
         post("/bookAppointment") {
@@ -243,7 +255,7 @@ fun Application.configureRouting() {
                         val uid = verificationStatus.firebaseToken?.uid ?: ""
                         if (uid.isBlank()) {
                             call.respond(
-                                HttpStatusCode.BadRequest, BookingResponse(
+                                HttpStatusCode.InternalServerError, BookingResponse(
                                     failure = "Failure to book appointment: User profile not found"
                                 )
                             )
@@ -253,7 +265,7 @@ fun Application.configureRouting() {
                             val userData = userDoc.get().get().data
                             if (userData.isNullOrEmpty()) {
                                 call.respond(
-                                    HttpStatusCode.BadRequest, BookingResponse(
+                                    HttpStatusCode.InternalServerError, BookingResponse(
                                         failure = "Failure to book appointment: User profile not found"
                                     )
                                 )
@@ -292,6 +304,12 @@ fun Application.configureRouting() {
                                 BookingResponse(failure = "Failure to book appointment: ${e.localizedMessage}")
                             )
                         }
+                    }
+                    else {
+                        call.respond(
+                            HttpStatusCode.Unauthorized,
+                            BookingResponse(failure = "Failure to book appointment: Authorization token not valid")
+                        )
                     }
                 }
         }
@@ -512,7 +530,7 @@ fun Application.configureRouting() {
                                         val userData = userDoc.get().get().data
                                         if (userData == null) {
                                             call.respond(
-                                                HttpStatusCode.BadRequest,
+                                                HttpStatusCode.InternalServerError,
                                                 UploadResponse(failure = "Failure to upload report: No user found"))
                                         }
                                         val carInfoRef = if (userData?.get("carInfoRef") == "") {
@@ -626,11 +644,11 @@ fun Application.configureRouting() {
                                     CreateUserProfileResponse("Failure to create user profile: \"Missing authorization token\"")
                                 )
                                 if (errorState == VerificationErrorState.FailedToParseToken) call.respond(
-                                    HttpStatusCode.BadRequest,
+                                    HttpStatusCode.InternalServerError,
                                     CreateUserProfileResponse("Failed to create user profile")
                                 )
                             }
-                            call.respond(HttpStatusCode.BadRequest, CreateUserProfileResponse("Failure to create user profile"))
+                            call.respond(HttpStatusCode.InternalServerError, CreateUserProfileResponse("Failure to create user profile"))
                         }
 
                         is VerificationState.VerificationStateSuccess -> {
@@ -691,11 +709,11 @@ fun Application.configureRouting() {
                                 )
                                 if (errorState == VerificationErrorState.FailedToParseToken) call.respond(
 
-                                    HttpStatusCode.BadRequest,
+                                    HttpStatusCode.InternalServerError,
                                     ManualEntryResponse("Failure to manually enter card data: Failed to enter car info")
                                 )
                             }
-                            call.respond(HttpStatusCode.BadRequest, ManualEntryResponse("Failure to manually enter card data: Failed to enter car info"))
+                            call.respond(HttpStatusCode.InternalServerError, ManualEntryResponse("Failure to manually enter card data: Failed to enter car info"))
                         }
 
                         is VerificationState.VerificationStateSuccess -> {
@@ -767,11 +785,11 @@ fun Application.configureRouting() {
                                 )
                                 if (errorState == VerificationErrorState.FailedToParseToken) call.respond(
 
-                                    HttpStatusCode.BadRequest,
+                                    HttpStatusCode.InternalServerError,
                                     RecallsResponse(failure="Failure to fetch open recalls: Failed to fetch recall info")
                                 )
                             }
-                            call.respond(HttpStatusCode.BadRequest, RecallsResponse(failure="Failure to fetch open recalls: Failed to fetch recall info"))
+                            call.respond(HttpStatusCode.InternalServerError, RecallsResponse(failure="Failure to fetch open recalls: Failed to fetch recall info"))
                         }
 
                         is VerificationState.VerificationStateSuccess -> {
@@ -783,7 +801,7 @@ fun Application.configureRouting() {
                                 val userData = userDoc.get().get().data
                                 if (userData == null) {
                                     call.respond(
-                                        HttpStatusCode.BadRequest,
+                                        HttpStatusCode.InternalServerError,
                                         UploadResponse(failure = "Failure to fetch open recalls: No user found"))
                                 }
                                 val carInfoRef = userData?.get("carInfoRef") as? DocumentReference
@@ -792,14 +810,14 @@ fun Application.configureRouting() {
                                 }
                                 val carInfoData = carInfo?.data
                                 if (carInfoData == null) {
-                                    call.respond(HttpStatusCode.BadRequest, RecallsResponse(failure="Failure to fetch open recalls: Incomplete car info"))
+                                    call.respond(HttpStatusCode.InternalServerError, RecallsResponse(failure="Failure to fetch open recalls: Incomplete car info"))
                                     return@collectLatest
                                 }
                                 val year = carInfoData?.get("year") as? Int
                                 val make = carInfoData?.get("make") as? String
                                 val model = carInfoData?.get("model") as? String
                                 if (make.isNullOrBlank() || model.isNullOrBlank() || year == null) {
-                                    call.respond(HttpStatusCode.BadRequest, RecallsResponse(failure="Failure to fetch open recalls: Incomplete car info"))
+                                    call.respond(HttpStatusCode.InternalServerError, RecallsResponse(failure="Failure to fetch open recalls: Incomplete car info"))
                                     return@collectLatest
                                 }
                                 recallService
@@ -917,12 +935,12 @@ fun Application.configureRouting() {
                                     CompleteRecallResponse("Failure to complete open recall: \"Missing authorization token\"")
                                 )
                                 if (errorState == VerificationErrorState.FailedToParseToken) call.respond(
-                                    HttpStatusCode.BadRequest,
+                                    HttpStatusCode.InternalServerError,
                                     CompleteRecallResponse("Failure to complete open recall")
                                 )
                             }
                             call.respond(
-                                HttpStatusCode.BadRequest,
+                                HttpStatusCode.InternalServerError,
                                 CompleteRecallResponse("Failure to complete open recall")
                             )
                         }
@@ -938,21 +956,21 @@ fun Application.configureRouting() {
                                 }.data
                                 if (userData == null) {
                                     call.respond(
-                                        HttpStatusCode.BadRequest,
+                                        HttpStatusCode.InternalServerError,
                                         CompleteRecallResponse("Failure to complete open recall: User not found")
                                     )
                                 }
                                 val carInfoRef = userData?.get("carInfoRef") as DocumentReference
                                 if (carInfoRef.get().get().data == null) {
                                     call.respond(
-                                        HttpStatusCode.BadRequest,
+                                        HttpStatusCode.InternalServerError,
                                         CompleteRecallResponse("Failure to complete open recall: Car info not found")
                                     )
                                 }
-                                val recallsItemRef = carInfoRef?.collection("recalls")?.whereEqualTo("nhtsaCamapaignNumber", request.nhtsaCampaignNumber)?.get() as DocumentReference
+                                val recallsItemRef = carInfoRef?.collection("recalls")?.whereEqualTo("nhtsaCampaignNumber", request.nhtsaCampaignNumber)?.get() as DocumentReference
                                 if (recallsItemRef.get().get().data == null) {
                                     call.respond(
-                                        HttpStatusCode.BadRequest,
+                                        HttpStatusCode.InternalServerError,
                                         CompleteRecallResponse("Failure to complete open recall: Recall not found")
                                     )
                                 }
