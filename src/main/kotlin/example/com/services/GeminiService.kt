@@ -32,7 +32,7 @@ class GeminiServiceImpl : GeminiService {
     }
 
     private fun geminiApiKey(): String {
-        return System.getenv("gemini_api_key") ?: ""
+        return System.getenv("gemini_api_key") ?: "AIzaSyAzpEsvJ8OOCIReSFTo9u573r0KlC2p5yU"
     }
 
     override suspend fun generateCarPartsFromImage(image: ByteArray): Flow<GeminiReportData?> = flow {

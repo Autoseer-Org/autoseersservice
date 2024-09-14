@@ -4,7 +4,6 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class BookingRequest(
-    val token: String,
     val id: String,
     val place: String,
     val timeDate: String,

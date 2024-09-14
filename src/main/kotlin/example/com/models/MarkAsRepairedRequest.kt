@@ -4,7 +4,6 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class MarkAsRepairedRequest(
-    val token: String,
     val partId: String,
 )
 

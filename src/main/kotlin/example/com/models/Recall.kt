@@ -58,7 +58,6 @@ data class PublicRecallObjectData(
 
 @Serializable
 data class CompleteRecallRequest(
-    val token: String,
     @SerialName("nhtsa_campaign_number")
     val nhtsaCampaignNumber: String,
 )

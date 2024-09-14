@@ -4,7 +4,6 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class UploadRequest(
-    val token: String,
     val image: ByteArray,
 )
 

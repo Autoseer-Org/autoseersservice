@@ -4,9 +4,6 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 @Serializable
-data class HomeRequest(val token: String)
-
-@Serializable
 data class HomeResponse(
     val data: HomeData? = null,
     val failure: String? = null
@@ -18,8 +15,10 @@ data class HomeData(
     val mileage: Int? = 0,
     @SerialName("health_score")
     val healthScore: Int? = 0,
-    @SerialName("alert")
+    @SerialName("alerts")
     val alerts: Int? = 0,
+    @SerialName("recalls")
+    val recalls: Int? = 0,
     @SerialName("repairs")
     val repairs: Int? = 0,
     @SerialName("reports")

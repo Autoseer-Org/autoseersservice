@@ -6,7 +6,7 @@ import io.ktor.server.engine.*
 import io.ktor.server.netty.*
 
 fun main(args: Array<String>) {
-    val arrayListOfEnv = EnvLoader.arrayOfEnvs("/Users/adriansilva/src/autoseers/.env")
+    val arrayListOfEnv = EnvLoader.arrayOfEnvs("C:\\Users\\dacos\\Documents\\autoseersservice\\.env")
     arrayListOfEnv.forEach {
         System.setProperty(it.first, it.second)
     }
