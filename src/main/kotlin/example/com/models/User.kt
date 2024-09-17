@@ -8,7 +8,7 @@ data class User(
 )
 
 @Serializable
-data class CreateUserProfileRequest(val token: String, val name: String)
+data class CreateUserProfileRequest(val name: String)
 
 @Serializable
 data class CreateUserProfileResponse(val failure: String? = null)

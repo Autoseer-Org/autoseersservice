@@ -36,9 +36,14 @@ fun Application.configureRouting() {
 
     val firestore: Firestore = FirestoreClient.getFirestore()
     routing {
-        post("/recommendations") {
-            val request = call.receive<RecommendationsRequest>()
-            verificationTokenService.verifyAndCheckForTokenRevoked(request.token, true)
+        get("/recommendations") {
+            val authHeader = call.request.headers["Authorization"]
+            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+                call.respond(HttpStatusCode.Unauthorized, HomeResponse(failure = "Failure to fetch recommendations: Missing or invalid authorization"))
+                return@get
+            }
+            val token = authHeader.removePrefix("Bearer ").trim()
+            verificationTokenService.verifyAndCheckForTokenRevoked(token, true)
                 .collectLatest { verificationStatus ->
                     if (verificationStatus is VerificationState.VerificationStateSuccess) {
                         val uid = verificationStatus.firebaseToken?.uid ?: ""
@@ -56,6 +61,7 @@ fun Application.configureRouting() {
                                         error = "NEEDS_CAR_INFO"
                                     )
                                 )
+                                return@collectLatest
                             } else {
                                 val carInfoData = carInfoRef.get().get().data
                                 val carMake = carInfoData?.get("make") as? String
@@ -68,6 +74,7 @@ fun Application.configureRouting() {
                                             error = "NEEDS_CAR_INFO"
                                         )
                                     )
+                                    return@collectLatest
                                 } else {
                                     geminiService.generateRecommendedServices(
                                         CarInfoModel(make = carMake, model = carModel, mileage = mileage, year = year)
@@ -78,12 +85,14 @@ fun Application.configureRouting() {
                                                     error = "Failure to fetch recommendations: Failed to produce response from gemini"
                                                 )
                                             )
+                                            return@collectLatest
                                         }else {
                                             call.respond(
                                                 HttpStatusCode.OK, RecommendationsResponse(
                                                     data = geminiRecommendations
                                                 )
                                             )
+                                            return@collectLatest
                                         }
                                     }
                                 }
@@ -96,6 +105,7 @@ fun Application.configureRouting() {
                                     error = "Failure to fetch recommendations: ${e.localizedMessage}"
                                 )
                             )
+                            return@collectLatest
                         }
                     }
                     else {
@@ -103,13 +113,20 @@ fun Application.configureRouting() {
                             HttpStatusCode.Unauthorized,
                             RecommendationsResponse(error = "Failure to fetch recommendations: Authorization token not valid")
                         )
+                        return@collectLatest
                     }
                 }
         }
 
-        post("/pollBookingStatus") {
+        get("/pollBookingStatus") {
+            val authHeader = call.request.headers["Authorization"]
+            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+                call.respond(HttpStatusCode.Unauthorized, HomeResponse(failure = "Failure to fetch booking status: Missing or invalid authorization"))
+                return@get
+            }
+            val token = authHeader.removePrefix("Bearer ").trim()
             val request = call.receive<PollBookingStatusRequest>()
-            verificationTokenService.verifyAndCheckForTokenRevoked(request.token, true)
+            verificationTokenService.verifyAndCheckForTokenRevoked(token, true)
                 .collectLatest { verificationStatus ->
                     if (verificationStatus is VerificationState.VerificationStateSuccess) {
                         val uid = verificationStatus.firebaseToken?.uid ?: ""
@@ -120,6 +137,7 @@ fun Application.configureRouting() {
                                     failure = "Failure to fetch booking status: User profile not found"
                                 )
                             )
+                            return@collectLatest
                         }
                         val userDoc = firestore.collection("users").document(uid)
                         try {
@@ -132,6 +150,7 @@ fun Application.configureRouting() {
                                                 "Failure to fetch booking status: User profile not found"
                                     )
                                 )
+                                return@collectLatest
                             }
                             val carInfoRef = userData?.get("carInfoRef") as? DocumentReference
                             val carInfoData = carInfoRef?.get()?.get()?.data
@@ -142,6 +161,7 @@ fun Application.configureRouting() {
                                         failure = "Failure to fetch booking status: Car data not found"
                                     )
                                 )
+                                return@collectLatest
                             }
 
                             val carPartScheduledServiceRef = carInfoRef
@@ -153,6 +173,7 @@ fun Application.configureRouting() {
                                 call.respond(
                                     HttpStatusCode.OK, PollBookingStatusResponse(state = BookingState.NO_BOOKING_REQUESTED)
                                 )
+                                return@collectLatest
                             }
                             call.respond(
                                 HttpStatusCode.OK, PollBookingStatusResponse(
@@ -164,6 +185,7 @@ fun Application.configureRouting() {
                                         ),
                                 )
                             )
+                            return@collectLatest
                         } catch (e: Exception) {
                             logError(call, e)
                             call.respond(
@@ -173,13 +195,20 @@ fun Application.configureRouting() {
                                     failure = "Failure to fetch booking status: ${e.localizedMessage}"
                                 )
                             )
+                            return@collectLatest
                         }
                     }
                 }
         }
         post("/markAsRepaired") {
+            val authHeader = call.request.headers["Authorization"]
+            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+                call.respond(HttpStatusCode.Unauthorized, HomeResponse(failure = "Failure to mark part as repaired: Missing or invalid authorization"))
+                return@post
+            }
+            val token = authHeader.removePrefix("Bearer ").trim()
             val request = call.receive<MarkAsRepairedRequest>()
-            verificationTokenService.verifyAndCheckForTokenRevoked(request.token, true)
+            verificationTokenService.verifyAndCheckForTokenRevoked(token, true)
                 .collectLatest { verificationStatus ->
                     if (verificationStatus is VerificationState.VerificationStateSuccess) {
                         val uid = verificationStatus.firebaseToken?.uid ?: ""
@@ -189,6 +218,7 @@ fun Application.configureRouting() {
                                     failure = "Failure to mark part as repaired: User profile not found"
                                 )
                             )
+                            return@collectLatest
                         }
                         val userDoc = firestore.collection("users").document(uid)
                         try {
@@ -199,6 +229,7 @@ fun Application.configureRouting() {
                                         failure = "Failure to mark part as repaired: User profile not found"
                                     )
                                 )
+                                return@collectLatest
                             }
                             val carInfoRef = userData?.get("carInfoRef") as? DocumentReference
                             val carInfoData = carInfoRef?.get()?.get()?.data
@@ -208,6 +239,7 @@ fun Application.configureRouting() {
                                         failure = "Failure to mark part as repaired: Car info not found"
                                     )
                                 )
+                                return@collectLatest
                             }
                             userDoc.update(
                                 mapOf(
@@ -223,6 +255,7 @@ fun Application.configureRouting() {
                                 call.respond(
                                     HttpStatusCode.OK, MarkAsRepairedResponse()
                                 )
+                                return@collectLatest
                             }
                             carPartStatusRef?.update(mapOf(
                                 "status" to "Good"
@@ -230,12 +263,14 @@ fun Application.configureRouting() {
                             call.respond(
                                 HttpStatusCode.OK, MarkAsRepairedResponse()
                             )
+                            return@collectLatest
                         } catch (e: Exception) {
                             logError(call, e)
                             call.respond(
                                 HttpStatusCode.InternalServerError,
                                 MarkAsRepairedResponse(failure = "Failure to mark part as repaired: ${e.localizedMessage}")
                             )
+                            return@collectLatest
                         }
                     }
                     else {
@@ -243,13 +278,20 @@ fun Application.configureRouting() {
                             HttpStatusCode.Unauthorized,
                             MarkAsRepairedResponse(failure = "Failure to mark part as repaired: Authorization token not valid")
                         )
+                        return@collectLatest
                     }
                 }
         }
         post("/bookAppointment") {
+            val authHeader = call.request.headers["Authorization"]
+            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+                call.respond(HttpStatusCode.Unauthorized, HomeResponse(failure = "Failure to book appointment: Missing or invalid authorization"))
+                return@post
+            }
+            val token = authHeader.removePrefix("Bearer ").trim()
             val request = call.receive<BookingRequest>()
             verificationTokenService
-                .verifyAndCheckForTokenRevoked(token = request.token, true)
+                .verifyAndCheckForTokenRevoked(token = token, true)
                 .collectLatest { verificationStatus ->
                     if (verificationStatus is VerificationState.VerificationStateSuccess) {
                         val uid = verificationStatus.firebaseToken?.uid ?: ""
@@ -259,6 +301,7 @@ fun Application.configureRouting() {
                                     failure = "Failure to book appointment: User profile not found"
                                 )
                             )
+                            return@collectLatest
                         }
                         val userDoc = firestore.collection("users").document(uid)
                         try {
@@ -269,6 +312,7 @@ fun Application.configureRouting() {
                                         failure = "Failure to book appointment: User profile not found"
                                     )
                                 )
+                                return@collectLatest
                             }
                             val carInfoRef = userData?.get("carInfoRef") as? DocumentReference
                             val carInfoData = carInfoRef?.get()?.get()?.data
@@ -278,6 +322,7 @@ fun Application.configureRouting() {
                                         failure = "Failure to book appointment: Car data not found"
                                     )
                                 )
+                                return@collectLatest
                             }
                             val carPartStatusRef = carInfoRef
                                 ?.collection("carPartsStatus")
@@ -297,12 +342,14 @@ fun Application.configureRouting() {
                             call.respond(
                                 HttpStatusCode.OK, BookingResponse()
                             )
+                            return@collectLatest
                         } catch (e: Exception) {
                             logError(call, e)
                             call.respond(
                                 HttpStatusCode.InternalServerError,
                                 BookingResponse(failure = "Failure to book appointment: ${e.localizedMessage}")
                             )
+                            return@collectLatest
                         }
                     }
                     else {
@@ -310,16 +357,21 @@ fun Application.configureRouting() {
                             HttpStatusCode.Unauthorized,
                             BookingResponse(failure = "Failure to book appointment: Authorization token not valid")
                         )
+                        return@collectLatest
                     }
                 }
         }
         get("/") {
             call.respondText("Hello World!")
         }
-        post("/alerts") {
+        get("/alerts") {
             val context = this.coroutineContext
-            val request = call.receive<AlertsRequest>()
-            val token = request.token
+            val authHeader = call.request.headers["Authorization"]
+            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+                call.respond(HttpStatusCode.Unauthorized, HomeResponse(failure = "Failure to fetch alerts: Missing or invalid authorization"))
+                return@get
+            }
+            val token = authHeader.removePrefix("Bearer ").trim()
             verificationTokenService
                 .verifyAndCheckForTokenRevoked(token = token, getFirebaseToken = true)
                 .collect { verificationStatus ->
@@ -335,6 +387,7 @@ fun Application.configureRouting() {
                             }.data
                             if (userData == null) {
                                 call.respond(HttpStatusCode.OK, alertsResponse)
+                                return@collect
                             }
                             val carInfoRef = userData?.get("carInfoRef") as DocumentReference
                             val carInfo = withContext(Dispatchers.IO + context) {
@@ -342,6 +395,7 @@ fun Application.configureRouting() {
                             }
                             if (carInfo?.data?.isEmpty() == true) {
                                 call.respond(HttpStatusCode.OK, alertsResponse)
+                                return@collect
                             } else {
                                 alertsResponse = alertsResponse.copy(data = mutableListOf())
                                 val mediumParts = carInfo
@@ -418,19 +472,25 @@ fun Application.configureRouting() {
                                 HttpStatusCode.InternalServerError,
                                 AlertsResponse(failure = "Failure to fetch alerts: ${e.localizedMessage}")
                             )
+                            return@collect
                         }
                     } else {
                         call.respond(
                             HttpStatusCode.Unauthorized,
                             AlertsResponse(failure = "Failure to fetch alerts: Authorization token not valid")
                         )
+                        return@collect
                     }
                 }
         }
-        post("/home") {
+        get("/home") {
             val context = this.coroutineContext
-            val request = call.receive<HomeRequest>()
-            val token = request.token
+            val authHeader = call.request.headers["Authorization"]
+            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+                call.respond(HttpStatusCode.Unauthorized, HomeResponse(failure = "Failure to fetch home page data: Missing or invalid authorization"))
+                return@get
+            }
+            val token = authHeader.removePrefix("Bearer ").trim()
             verificationTokenService
                 .verifyAndCheckForTokenRevoked(token = token, getFirebaseToken = true)
                 .collect { verificationStatus ->
@@ -444,6 +504,7 @@ fun Application.configureRouting() {
                                 val userData = userDoc.get().get().data
                                 if (userData == null) {
                                     call.respond(HttpStatusCode.OK, homeResponse)
+                                    return@collect
                                 }
                                 val carInfoRef = if (userData?.get("carInfoRef") == "") {
                                     null
@@ -453,6 +514,7 @@ fun Application.configureRouting() {
                                 val carInfo = carInfoRef?.get()?.get()
                                 if (carInfo?.exists() == false || carInfoRef == null) {
                                     call.respond(HttpStatusCode.OK, homeResponse)
+                                    return@collect
                                 } else {
                                     homeResponse = homeResponse.copy(
                                         data = HomeData(
@@ -492,23 +554,31 @@ fun Application.configureRouting() {
                                         )
                                     )
                                     call.respond(HttpStatusCode.OK, homeResponse)
+                                    return@collect
                                 }
                             } catch (e: Exception) {
                                 logError(call, e)
                                 call.respond(
                                     HttpStatusCode.InternalServerError,
                                     HomeResponse(failure = "Failure to fetch home page data: ${e.localizedMessage}"))
+                                return@collect
                             }
                     } else {
                         call.respond(
                             HttpStatusCode.Unauthorized,
                             HomeResponse(failure = "Failure to fetch home page data: Authorization token not valid"))
+                        return@collect
                     }
                 }
         }
         post("/upload") {
+            val authHeader = call.request.headers["Authorization"]
+            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+                call.respond(HttpStatusCode.Unauthorized, HomeResponse(failure = "Failure to upload report: Missing or invalid authorization"))
+                return@post
+            }
+            val token = authHeader.removePrefix("Bearer ").trim()
             val request = call.receive<UploadRequest>()
-            val token = request.token
             verificationTokenService
                 .verifyAndCheckForTokenRevoked(token = token, getFirebaseToken = true)
                 .collectLatest { verificationStatus ->
@@ -522,6 +592,7 @@ fun Application.configureRouting() {
                                     call.respond(
                                         HttpStatusCode.BadRequest,
                                         UploadResponse(failure = "Failure to upload report: Invalid report image"))
+                                    return@collectLatest
                                 } else {
                                     try {
                                         val userDoc = firestore
@@ -532,6 +603,7 @@ fun Application.configureRouting() {
                                             call.respond(
                                                 HttpStatusCode.InternalServerError,
                                                 UploadResponse(failure = "Failure to upload report: No user found"))
+                                            return@collectLatest
                                         }
                                         val carInfoRef = if (userData?.get("carInfoRef") == "") {
                                             null
@@ -611,11 +683,13 @@ fun Application.configureRouting() {
                                         call.respond(HttpStatusCode.OK, UploadResponse())
                                         // Store carInfoReference and set it to the user's doc
                                         // Store Gemini API key in GCP!
+                                        return@collectLatest
                                     }catch(e: Exception) {
                                         logError(call, e)
                                         call.respond(
                                             HttpStatusCode.InternalServerError,
                                             UploadResponse(failure = "Failure to upload report: ${e.localizedMessage}"))
+                                        return@collectLatest
                                     }
                                 }
                             }
@@ -623,12 +697,18 @@ fun Application.configureRouting() {
                         call.respond(
                             HttpStatusCode.Unauthorized,
                             CreateUserProfileResponse("Failure to upload report: Authorization token not valid"))
+                        return@collectLatest
                     }
                 }
         }
         post("/createUserProfile") {
+            val authHeader = call.request.headers["Authorization"]
+            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+                call.respond(HttpStatusCode.Unauthorized, HomeResponse(failure = "Failure to create user profile: Missing or invalid authorization"))
+                return@post
+            }
+            val token = authHeader.removePrefix("Bearer ").trim()
             val request = call.receive<CreateUserProfileRequest>()
-            val token = request.token
             verificationTokenService
                 .verifyAndCheckForTokenRevoked(token = token, getFirebaseToken = true)
                 .collectLatest { verificationState ->
@@ -649,6 +729,7 @@ fun Application.configureRouting() {
                                 )
                             }
                             call.respond(HttpStatusCode.InternalServerError, CreateUserProfileResponse("Failure to create user profile"))
+                            return@collectLatest
                         }
 
                         is VerificationState.VerificationStateSuccess -> {
@@ -670,11 +751,13 @@ fun Application.configureRouting() {
                                     val userDoc = userDocRef.get().get()
                                     if (userDoc.exists()) {
                                         call.respond(HttpStatusCode.Created, CreateUserProfileResponse())
+                                        return@withContext
                                     } else {
                                         userDocRef.set(userObj)
                                     }
 
                                     call.respond(HttpStatusCode.Created, CreateUserProfileResponse())
+                                    return@withContext
                                 }
                             } catch (e: Exception) {
                                 logError(call, e)
@@ -683,6 +766,7 @@ fun Application.configureRouting() {
                                         failure = "Failure to create user profile: ${e.localizedMessage}"
                                     )
                                 )
+                                return@collectLatest
                             }
                         }
                     }
@@ -691,8 +775,13 @@ fun Application.configureRouting() {
 
         post("/manualEntry") {
             val context = this.coroutineContext
+            val authHeader = call.request.headers["Authorization"]
+            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+                call.respond(HttpStatusCode.Unauthorized, HomeResponse(failure = "Failure to manually enter card data: Missing or invalid authorization"))
+                return@post
+            }
+            val token = authHeader.removePrefix("Bearer ").trim()
             val request = call.receive<ManualEntryRequest>()
-            val token = request.token
             verificationTokenService
                 .verifyAndCheckForTokenRevoked(token = token, getFirebaseToken = true)
                 .collectLatest { verificationState ->
@@ -714,6 +803,7 @@ fun Application.configureRouting() {
                                 )
                             }
                             call.respond(HttpStatusCode.InternalServerError, ManualEntryResponse("Failure to manually enter card data: Failed to enter car info"))
+                            return@collectLatest
                         }
 
                         is VerificationState.VerificationStateSuccess -> {
@@ -727,6 +817,7 @@ fun Application.configureRouting() {
                                 }.data
                                 if (userData == null) {
                                     call.respond(HttpStatusCode.BadRequest, ManualEntryResponse("Failure to manually enter card data: User could not be found"))
+                                    return@collectLatest
                                 }
                                 val carInfoRef = userData?.get("carInfoRef") as DocumentReference
                                 val carInfoData = withContext(Dispatchers.IO + context) {
@@ -752,10 +843,12 @@ fun Application.configureRouting() {
                                     "carHealth" to (carInfoData?.get("carHealth") ?: ""),
                                 ))
                                 call.respond(HttpStatusCode.OK, ManualEntryResponse())
+                                return@collectLatest
                             } catch (e: Exception) {
                                 call.respond(
                                     HttpStatusCode.InternalServerError,
                                     ManualEntryResponse(failure = "Failure to manually enter card data: ${e.localizedMessage}"))
+                                return@collectLatest
                             }
                         }
                     }
@@ -764,13 +857,14 @@ fun Application.configureRouting() {
 
         get("/recalls") {
             val context = this.coroutineContext
-            val authorizationToken = call.request.headers[HttpHeaders.Authorization]
-            if (authorizationToken == null) {
-                call.respond(HttpStatusCode.Unauthorized, "Missing Authorization token")
+            val authHeader = call.request.headers["Authorization"]
+            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+                call.respond(HttpStatusCode.Unauthorized, HomeResponse(failure = "Failure to fetch open recalls: Missing or invalid authorization"))
                 return@get
             }
+            val token = authHeader.removePrefix("Bearer ").trim()
             verificationTokenService
-                .verifyAndCheckForTokenRevoked(token = authorizationToken, getFirebaseToken = true)
+                .verifyAndCheckForTokenRevoked(token = token, getFirebaseToken = true)
                 .collectLatest { verificationState ->
                     when (verificationState) {
                         is VerificationState.VerificationStateFailure -> {
@@ -790,6 +884,7 @@ fun Application.configureRouting() {
                                 )
                             }
                             call.respond(HttpStatusCode.InternalServerError, RecallsResponse(failure="Failure to fetch open recalls: Failed to fetch recall info"))
+                            return@collectLatest
                         }
 
                         is VerificationState.VerificationStateSuccess -> {
@@ -803,6 +898,7 @@ fun Application.configureRouting() {
                                     call.respond(
                                         HttpStatusCode.InternalServerError,
                                         UploadResponse(failure = "Failure to fetch open recalls: No user found"))
+                                    return@collectLatest
                                 }
                                 val carInfoRef = userData?.get("carInfoRef") as? DocumentReference
                                 val carInfo = withContext(Dispatchers.IO + context) {
@@ -899,10 +995,12 @@ fun Application.configureRouting() {
                                                 },
                                             )
                                             call.respond(HttpStatusCode.OK, recallsResponse)
+                                            return@collectLatest
                                         } catch (e: Exception) {
                                             call.respond(
                                                 HttpStatusCode.InternalServerError,
                                                 HomeResponse(failure = "Failure to fetch open recalls: ${e.localizedMessage}"))
+                                            return@collectLatest
                                         }
                                     }
 
@@ -910,6 +1008,7 @@ fun Application.configureRouting() {
                                 call.respond(
                                     HttpStatusCode.InternalServerError,
                                     HomeResponse(failure = "Failure to fetch open recalls: ${e.localizedMessage}"))
+                                return@collectLatest
                             }
                         }
                     }
@@ -918,8 +1017,13 @@ fun Application.configureRouting() {
 
         post("/completeRecall") {
             val context = this.coroutineContext
+            val authHeader = call.request.headers["Authorization"]
+            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+                call.respond(HttpStatusCode.Unauthorized, HomeResponse(failure = "Failure to complete open recall: Missing or invalid authorization"))
+                return@post
+            }
+            val token = authHeader.removePrefix("Bearer ").trim()
             val request = call.receive<CompleteRecallRequest>()
-            val token = request.token
             verificationTokenService
                 .verifyAndCheckForTokenRevoked(token = token, getFirebaseToken = true)
                 .collectLatest { verificationState ->
@@ -943,6 +1047,7 @@ fun Application.configureRouting() {
                                 HttpStatusCode.InternalServerError,
                                 CompleteRecallResponse("Failure to complete open recall")
                             )
+                            return@collectLatest
                         }
 
                         is VerificationState.VerificationStateSuccess -> {
@@ -959,6 +1064,7 @@ fun Application.configureRouting() {
                                         HttpStatusCode.InternalServerError,
                                         CompleteRecallResponse("Failure to complete open recall: User not found")
                                     )
+                                    return@collectLatest
                                 }
                                 val carInfoRef = userData?.get("carInfoRef") as DocumentReference
                                 if (carInfoRef.get().get().data == null) {
@@ -966,6 +1072,7 @@ fun Application.configureRouting() {
                                         HttpStatusCode.InternalServerError,
                                         CompleteRecallResponse("Failure to complete open recall: Car info not found")
                                     )
+                                    return@collectLatest
                                 }
                                 val recallsItemRef = carInfoRef?.collection("recalls")?.whereEqualTo("nhtsaCampaignNumber", request.nhtsaCampaignNumber)?.get() as DocumentReference
                                 if (recallsItemRef.get().get().data == null) {
@@ -973,6 +1080,7 @@ fun Application.configureRouting() {
                                         HttpStatusCode.InternalServerError,
                                         CompleteRecallResponse("Failure to complete open recall: Recall not found")
                                     )
+                                    return@collectLatest
                                 }
                                 recallsItemRef.update(mapOf(
                                     "status" to "COMPLETE",
@@ -980,10 +1088,12 @@ fun Application.configureRouting() {
                                 call.respond(
                                     HttpStatusCode.OK, CompleteRecallResponse()
                                 )
+                                return@collectLatest
                             } catch (e: Exception) {
                                 call.respond(
                                     HttpStatusCode.InternalServerError,
                                     CompleteRecallResponse(failure = "Failure to complete open recall: ${e.localizedMessage}"))
+                                return@collectLatest
                             }
                         }
                     }
