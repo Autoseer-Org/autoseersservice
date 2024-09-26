@@ -522,6 +522,7 @@ fun Application.configureRouting() {
                                             healthScore = carInfo?.data?.get("carHealth").toString().toIntOrNull() ?: 0,
                                             model = carInfo?.data?.get("model").toString(),
                                             make = carInfo?.data?.get("make").toString(),
+                                            recalls = carInfo?.data?.get("make").toString().toIntOrNull(),
                                             repairs = (userData?.get("repairs") as Long).toInt(),
                                             reports = (userData["uploads"] as Long).toInt(),
                                         ),
@@ -621,12 +622,18 @@ fun Application.configureRouting() {
                                                         "uploads" to FieldValue.increment(1),
                                                     )
                                                 )
+                                                var recalls: Int? = if (carReportData.carMake.isNotBlank() && carReportData.carModel.isNotBlank() && carReportData.carYear.isNotBlank()) {
+                                                    0
+                                                } else {
+                                                    null
+                                                }
                                                 newCarInfoRef.set(mapOf(
                                                     "make" to carReportData.carMake,
                                                     "mileage" to carReportData.carMileage,
                                                     "model" to carReportData.carModel,
                                                     "year" to carReportData.carYear,
                                                     "carHealth" to carReportData.healthScore,
+                                                    "recalls" to recalls
                                                 ))
                                                 carReportData.parts.forEach { part ->
                                                     newCarInfoRef
@@ -646,7 +653,9 @@ fun Application.configureRouting() {
                                                     "uploads" to FieldValue.increment(1),
                                                 )
                                             )
-                                            if (carInfoRefData["make"] == "" || carInfoRefData["model"] == "" || carInfoRefData["year"] == "") {
+                                            if (!carInfoRefData["make"].toString().isNullOrBlank()
+                                                || !carInfoRefData["model"].toString().isNullOrBlank()
+                                                || !carInfoRefData["year"].toString().isNullOrBlank()) {
                                                 carInfoRef.update(
                                                     mapOf(
                                                         "make" to carReportData?.carMake,
@@ -835,12 +844,20 @@ fun Application.configureRouting() {
                                 val year = request.year.ifBlank {
                                     carInfoData?.get("year") ?: ""
                                 }
+                                var recalls: Int? = if (!make.toString().isNullOrBlank()
+                                    && !model.toString().isNullOrBlank()
+                                    && !year.toString().isNullOrBlank()) {
+                                    0
+                                } else {
+                                    null
+                                }
                                 carInfoRef.set(mapOf(
                                     "make" to make,
                                     "model" to model,
                                     "year" to year,
                                     "mileage" to mileage,
                                     "carHealth" to (carInfoData?.get("carHealth") ?: ""),
+                                    "recalls" to recalls
                                 ))
                                 call.respond(HttpStatusCode.OK, ManualEntryResponse())
                                 return@collectLatest
@@ -947,6 +964,10 @@ fun Application.configureRouting() {
                                                         )
                                                     },
                                                 )
+                                                val recallsAmount = recallsResponse.recalls?.size ?: 0
+                                                carInfoRef.update(mapOf(
+                                                    "recalls" to recallsAmount
+                                                ))
                                                 call.respond(HttpStatusCode.OK, recallsResponse)
                                                 return@collectLatest
                                             }
@@ -994,6 +1015,10 @@ fun Application.configureRouting() {
                                                     )
                                                 },
                                             )
+                                            val recallsAmount = recallsResponse.recalls?.size ?: 0
+                                            carInfoRef.update(mapOf(
+                                                "recalls" to recallsAmount
+                                            ))
                                             call.respond(HttpStatusCode.OK, recallsResponse)
                                             return@collectLatest
                                         } catch (e: Exception) {
