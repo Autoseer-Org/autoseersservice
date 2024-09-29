@@ -274,7 +274,7 @@ fun Application.configureRouting() {
                             val goodParts = carInfo
                                 .reference
                                 .collection("carPartsStatus")
-                                .whereEqualTo("status", "Bad")
+                                .whereEqualTo("status", "Good")
                                 .get()
                             val goodPartsRef = goodParts.get()
                             val goodPartsSize = goodPartsRef.size()
