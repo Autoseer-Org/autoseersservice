@@ -27,6 +27,7 @@ import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.sql.Timestamp
 import java.time.Duration
+import kotlin.math.floor
 
 fun Application.configureRouting() {
     val auth: FirebaseAuth = FirebaseAuth.getInstance()
@@ -201,6 +202,7 @@ fun Application.configureRouting() {
                 }
         }
         post("/markAsRepaired") {
+            val context = this.coroutineContext
             val authHeader = call.request.headers["Authorization"]
             if (authHeader == null || !authHeader.startsWith("Bearer ")) {
                 call.respond(HttpStatusCode.Unauthorized, HomeResponse(failure = "Failure to mark part as repaired: Missing or invalid authorization"))
@@ -259,6 +261,26 @@ fun Application.configureRouting() {
                             }
                             carPartStatusRef?.update(mapOf(
                                 "status" to "Good"
+                            ))
+                            val carInfo = withContext(Dispatchers.IO + context) {
+                                carInfoRef.get().get()
+                            }
+                            val allParts = carInfo
+                                .reference
+                                .collection("carPartsStatus")
+                                .get()
+                            val allPartsRef = allParts.get()
+                            val allPartsSize = allPartsRef.size()
+                            val goodParts = carInfo
+                                .reference
+                                .collection("carPartsStatus")
+                                .whereEqualTo("status", "Bad")
+                                .get()
+                            val goodPartsRef = goodParts.get()
+                            val goodPartsSize = goodPartsRef.size()
+                            val newHealthScore: Int = 100 * goodPartsSize / allPartsSize
+                            carInfoRef?.update(mapOf(
+                                "carHealth" to newHealthScore
                             ))
                             call.respond(
                                 HttpStatusCode.OK, MarkAsRepairedResponse()
@@ -389,7 +411,7 @@ fun Application.configureRouting() {
                                 call.respond(HttpStatusCode.OK, alertsResponse)
                                 return@collect
                             }
-                            val carInfoRef = userData?.get("carInfoRef") as DocumentReference
+                            val carInfoRef = userData["carInfoRef"] as DocumentReference
                             val carInfo = withContext(Dispatchers.IO + context) {
                                 carInfoRef.get().get()
                             }
