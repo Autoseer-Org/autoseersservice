@@ -948,10 +948,10 @@ fun Application.configureRouting() {
                                     call.respond(HttpStatusCode.InternalServerError, RecallsResponse(failure="Failure to fetch open recalls: Incomplete car info"))
                                     return@collectLatest
                                 }
-                                val year = carInfoData?.get("year") as? Int
+                                val year = carInfoData?.get("year") as? String
                                 val make = carInfoData?.get("make") as? String
                                 val model = carInfoData?.get("model") as? String
-                                if (make.isNullOrBlank() || model.isNullOrBlank() || year == null) {
+                                if (make.isNullOrBlank() || model.isNullOrBlank() || year.isNullOrBlank()) {
                                     call.respond(HttpStatusCode.InternalServerError, RecallsResponse(failure="Failure to fetch open recalls: Incomplete car info"))
                                     return@collectLatest
                                 }
@@ -964,7 +964,7 @@ fun Application.configureRouting() {
                                                 call.respond(HttpStatusCode.OK, RecallsResponse(0))
                                                 return@collectLatest
                                             }
-                                            val numRecallsStored = recallsSubcollectionRef?.get()?.get()?.size()
+                                            val numRecallsStored = recallsSubcollectionRef?.get()?.get()?.size() ?: 0
                                             val campaignNumbers = HashSet<String>()
                                             val querySnapshot = recallsSubcollectionRef?.get()
                                             var recallsResponse = RecallsResponse(numRecallsStored)
@@ -973,7 +973,6 @@ fun Application.configureRouting() {
                                                     count = numRecallsStored,
                                                     recalls = querySnapshot?.get()?.documents?.map { document ->
                                                         RecallItem(
-                                                            shortSummary = document.get("shortSummary").toString(),
                                                             nhtsaCampaignNumber = document.get("nhtsaCampaignNumber").toString(),
                                                             manufacturer = document.get("manufacturer").toString(),
                                                             reportReceivedDate = document.get("reportReceivedDate").toString(),
@@ -997,34 +996,27 @@ fun Application.configureRouting() {
                                                 val campaignNumber = document.get("nhtsaCampaignNumber") as? String ?: ""
                                                 campaignNumbers.add(campaignNumber)
                                             }
-                                            if (numRecallsStored != publicRecallResponse.count) {
+                                            if (numRecallsStored <= publicRecallResponse.count) {
                                                 recallService.removeDuplicateRecallItems(publicRecallResponse, campaignNumbers)
-                                                geminiService
-                                                    .generateShortSummariesForRecalls(publicRecallResponse)
-                                                    .collectLatest { geminiRecallShortSummaryData ->
-                                                        geminiRecallShortSummaryData?.recallsItems?.forEachIndexed { idx, recallShortSummaryItem ->
-                                                            val recallRef = recallsSubcollectionRef?.document()
-                                                            val publicRecallObjectData = publicRecallResponse.results[idx]
-                                                            recallRef?.set(mapOf(
-                                                                "shortSummary" to recallShortSummaryItem.title,
-                                                                "nhtsaCampaignNumber" to publicRecallObjectData.nhtsaCampaignNumber,
-                                                                "manufacturer" to publicRecallObjectData.manufacturer,
-                                                                "reportReceivedDate" to publicRecallObjectData.reportReceivedDate,
-                                                                "component" to publicRecallObjectData.component,
-                                                                "summary" to publicRecallObjectData.summary,
-                                                                "consequence" to publicRecallObjectData.consequence,
-                                                                "remedy" to publicRecallObjectData.remedy,
-                                                                "notes" to publicRecallObjectData.notes,
-                                                                "status" to "INCOMPLETE"
-                                                            ))
-                                                        }
-                                                    }
+                                                publicRecallResponse.results.forEach { publicRecallObject ->
+                                                    val recallRef = recallsSubcollectionRef?.document()
+                                                    recallRef?.set(mapOf(
+                                                        "nhtsaCampaignNumber" to publicRecallObject.nhtsaCampaignNumber,
+                                                        "manufacturer" to publicRecallObject.manufacturer,
+                                                        "reportReceivedDate" to publicRecallObject.reportReceivedDate,
+                                                        "component" to publicRecallObject.component,
+                                                        "summary" to publicRecallObject.summary,
+                                                        "consequence" to publicRecallObject.consequence,
+                                                        "remedy" to publicRecallObject.remedy,
+                                                        "notes" to publicRecallObject.notes,
+                                                        "status" to "INCOMPLETE"
+                                                    ))
+                                                }
                                             }
                                             recallsResponse = recallsResponse.copy(
                                                 count = numRecallsStored,
                                                 recalls = querySnapshot?.get()?.documents?.map { document ->
                                                     RecallItem(
-                                                        shortSummary = document.get("shortSummary").toString(),
                                                         nhtsaCampaignNumber = document.get("nhtsaCampaignNumber").toString(),
                                                         manufacturer = document.get("manufacturer").toString(),
                                                         reportReceivedDate = document.get("reportReceivedDate").toString(),
@@ -1121,15 +1113,27 @@ fun Application.configureRouting() {
                                     )
                                     return@collectLatest
                                 }
-                                val recallsItemRef = carInfoRef?.collection("recalls")?.whereEqualTo("nhtsaCampaignNumber", request.nhtsaCampaignNumber)?.get() as DocumentReference
-                                if (recallsItemRef.get().get().data == null) {
+                                val filteredRecalls = carInfoRef
+                                    ?.collection("recalls")
+                                    ?.whereEqualTo("nhtsaCampaignNumber", request.nhtsaCampaignNumber)
+                                    ?.limit(1)
+                                    ?.get()
+                                if (filteredRecalls == null) {
                                     call.respond(
                                         HttpStatusCode.InternalServerError,
                                         CompleteRecallResponse("Failure to complete open recall: Recall not found")
                                     )
                                     return@collectLatest
                                 }
-                                recallsItemRef.update(mapOf(
+                                val recallItemRef = filteredRecalls.get()?.documents?.get(0)?.reference
+                                if (recallItemRef?.get()?.get()?.data == null) {
+                                    call.respond(
+                                        HttpStatusCode.InternalServerError,
+                                        CompleteRecallResponse("Failure to complete open recall: Recall not found")
+                                    )
+                                    return@collectLatest
+                                }
+                                recallItemRef?.update(mapOf(
                                     "status" to "COMPLETE",
                                 ))
                                 call.respond(

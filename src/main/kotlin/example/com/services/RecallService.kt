@@ -19,7 +19,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 interface RecallService {
-    suspend fun queryRecallStatus(year: Int, make: String, model: String): Flow<PublicRecallResponse?>
+    suspend fun queryRecallStatus(year: String, make: String, model: String): Flow<PublicRecallResponse?>
     fun removeDuplicateRecallItems(publicRecallResponse: PublicRecallResponse, set: HashSet<String>)
 }
 
@@ -33,7 +33,7 @@ class RecallServiceImpl: RecallService {
         }
     }
 
-    override suspend fun queryRecallStatus(year: Int, make: String, model: String): Flow<PublicRecallResponse?> = flow {
+    override suspend fun queryRecallStatus(year: String, make: String, model: String): Flow<PublicRecallResponse?> = flow {
         val publicRecallUrl = "https://api.nhtsa.gov/recalls/recallsByVehicle?make=$make&model=$model&modelYear=$year"
         try {
             val response = client.get(publicRecallUrl) {
