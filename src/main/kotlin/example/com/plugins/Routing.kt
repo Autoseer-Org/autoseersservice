@@ -278,7 +278,7 @@ fun Application.configureRouting() {
                                 .get()
                             val goodPartsRef = goodParts.get()
                             val goodPartsSize = goodPartsRef.size()
-                            val newHealthScore: Int = 100 * goodPartsSize / allPartsSize
+                            val newHealthScore: Int = (100 * goodPartsSize) / allPartsSize
                             carInfoRef?.update(mapOf(
                                 "carHealth" to newHealthScore
                             ))
