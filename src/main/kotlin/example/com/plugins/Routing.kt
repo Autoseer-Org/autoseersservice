@@ -112,11 +112,11 @@ fun Application.configureRouting() {
                 }
         }
 
-        get("/pollBookingStatus") {
+        post("/pollBookingStatus") {
             val authHeader = call.request.headers["Authorization"]
             if (authHeader == null || !authHeader.startsWith("Bearer ")) {
                 call.respond(HttpStatusCode.Unauthorized, HomeResponse(failure = "Failure to fetch booking status: Missing or invalid authorization"))
-                return@get
+                return@post
             }
             val token = authHeader.removePrefix("Bearer ").trim()
             val request = call.receive<PollBookingStatusRequest>()
@@ -410,11 +410,11 @@ fun Application.configureRouting() {
                                     val part = Alert(
                                         name = it.data["name"] as String,
                                         category = it.data["category"] as String,
-                                        updatedDate = (it.data["updatedDate"] as String),
+                                        updatedDate = (it.data["updatedDate"]).toString(),
                                         status = it.data["status"] as String,
                                         id = it.id
                                     )
-                                    if (description.isNullOrEmpty()) {
+                                    if (description.isNullOrEmpty() || description == "null") {
                                         geminiService.generateAlertSummary(alert = part).collect { geminiResponse ->
                                             part.summary = geminiResponse?.summary ?: ""
                                         }
@@ -446,7 +446,7 @@ fun Application.configureRouting() {
                                         status = it.data["status"] as String,
                                         id = it.id
                                     )
-                                    if (description.isNullOrEmpty()) {
+                                    if (description.isNullOrEmpty() || description == "null") {
                                         geminiService.generateAlertSummary(alert = part).collect { geminiResponse ->
                                             part.summary = geminiResponse?.summary ?: ""
                                         }
@@ -516,7 +516,7 @@ fun Application.configureRouting() {
                                             healthScore = carInfo?.data?.get("carHealth").toString().toIntOrNull() ?: 0,
                                             model = carInfo?.data?.get("model").toString(),
                                             make = carInfo?.data?.get("make").toString(),
-                                            repairs = (userData?.get("repairs") as Long).toInt(),
+                                            repairs = (userData["repairs"] as Long).toInt(),
                                             reports = (userData["uploads"] as Long).toInt(),
                                         ),
                                     )
