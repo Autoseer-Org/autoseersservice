@@ -20,13 +20,7 @@ import io.ktor.server.routing.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.Json
-import java.net.URI
-import java.net.http.HttpClient
-import java.net.http.HttpRequest
-import java.net.http.HttpResponse
 import java.sql.Timestamp
-import java.time.Duration
 
 fun Application.configureRouting() {
     val auth: FirebaseAuth = FirebaseAuth.getInstance()
@@ -416,7 +410,7 @@ fun Application.configureRouting() {
                                     val part = Alert(
                                         name = it.data["name"] as String,
                                         category = it.data["category"] as String,
-                                        updatedDate = it.data["updatedDate"] as String,
+                                        updatedDate = (it.data["updatedDate"] as String),
                                         status = it.data["status"] as String,
                                         id = it.id
                                     )
