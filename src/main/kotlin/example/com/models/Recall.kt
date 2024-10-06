@@ -13,7 +13,6 @@ data class RecallsResponse(
 
 @Serializable
 data class RecallItem(
-    val shortSummary: String,
     @SerialName("nhtsa_campaign_number")
     val nhtsaCampaignNumber: String,
     val manufacturer:  String,
@@ -42,6 +41,10 @@ data class PublicRecallObjectData(
     val manufacturer:  String,
     @SerialName("NHTSACampaignNumber")
     val nhtsaCampaignNumber: String,
+    @SerialName("parkIt")
+    val parkIt: Boolean,
+    @SerialName("parkOutSide")
+    val parkOutSide: Boolean,
     @SerialName("ReportReceivedDate")
     val reportReceivedDate: String,
     @SerialName("Component")
@@ -54,6 +57,12 @@ data class PublicRecallObjectData(
     val remedy: String,
     @SerialName("Notes")
     val notes: String,
+    @SerialName("ModelYear")
+    val modelYear: String,
+    @SerialName("Make")
+    val make: String,
+    @SerialName("Model")
+    val model: String,
 )
 
 @Serializable

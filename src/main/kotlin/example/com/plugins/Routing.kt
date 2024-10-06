@@ -33,7 +33,10 @@ fun Application.configureRouting() {
         get("/recommendations") {
             val authHeader = call.request.headers["Authorization"]
             if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-                call.respond(HttpStatusCode.Unauthorized, HomeResponse(failure = "Failure to fetch recommendations: Missing or invalid authorization"))
+                call.respond(
+                    HttpStatusCode.Unauthorized,
+                    HomeResponse(failure = "Failure to fetch recommendations: Missing or invalid authorization")
+                )
                 return@get
             }
             val token = authHeader.removePrefix("Bearer ").trim()
@@ -71,16 +74,22 @@ fun Application.configureRouting() {
                                     return@collectLatest
                                 } else {
                                     geminiService.generateRecommendedServices(
-                                        CarInfoModel(make = carMake, model = carModel, mileage = mileage, year = year)
+                                        CarInfoModel(
+                                            make = carMake,
+                                            model = carModel,
+                                            mileage = mileage,
+                                            year = year
+                                        )
                                     ).collectLatest { geminiRecommendations ->
                                         if (geminiRecommendations == null) {
                                             call.respond(
-                                                HttpStatusCode.InternalServerError, RecommendationsResponse(
+                                                HttpStatusCode.InternalServerError,
+                                                RecommendationsResponse(
                                                     error = "Failure to fetch recommendations: Failed to produce response from gemini"
                                                 )
                                             )
                                             return@collectLatest
-                                        }else {
+                                        } else {
                                             call.respond(
                                                 HttpStatusCode.OK, RecommendationsResponse(
                                                     data = geminiRecommendations
@@ -101,8 +110,7 @@ fun Application.configureRouting() {
                             )
                             return@collectLatest
                         }
-                    }
-                    else {
+                    } else {
                         call.respond(
                             HttpStatusCode.Unauthorized,
                             RecommendationsResponse(error = "Failure to fetch recommendations: Authorization token not valid")
@@ -115,7 +123,10 @@ fun Application.configureRouting() {
         post("/pollBookingStatus") {
             val authHeader = call.request.headers["Authorization"]
             if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-                call.respond(HttpStatusCode.Unauthorized, HomeResponse(failure = "Failure to fetch booking status: Missing or invalid authorization"))
+                call.respond(
+                    HttpStatusCode.Unauthorized,
+                    HomeResponse(failure = "Failure to fetch booking status: Missing or invalid authorization")
+                )
                 return@post
             }
             val token = authHeader.removePrefix("Bearer ").trim()
@@ -162,10 +173,12 @@ fun Application.configureRouting() {
                                 ?.collection("carPartScheduledService")
                                 ?.document(request.partId)
 
-                            val carPartScheduledServiceData = carPartScheduledServiceRef?.get()?.get()?.data
+                            val carPartScheduledServiceData =
+                                carPartScheduledServiceRef?.get()?.get()?.data
                             if (carPartScheduledServiceData.isNullOrEmpty()) {
                                 call.respond(
-                                    HttpStatusCode.OK, PollBookingStatusResponse(state = BookingState.NO_BOOKING_REQUESTED)
+                                    HttpStatusCode.OK,
+                                    PollBookingStatusResponse(state = BookingState.NO_BOOKING_REQUESTED)
                                 )
                                 return@collectLatest
                             }
@@ -195,9 +208,13 @@ fun Application.configureRouting() {
                 }
         }
         post("/markAsRepaired") {
+            val context = this.coroutineContext
             val authHeader = call.request.headers["Authorization"]
             if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-                call.respond(HttpStatusCode.Unauthorized, HomeResponse(failure = "Failure to mark part as repaired: Missing or invalid authorization"))
+                call.respond(
+                    HttpStatusCode.Unauthorized,
+                    HomeResponse(failure = "Failure to mark part as repaired: Missing or invalid authorization")
+                )
                 return@post
             }
             val token = authHeader.removePrefix("Bearer ").trim()
@@ -251,9 +268,33 @@ fun Application.configureRouting() {
                                 )
                                 return@collectLatest
                             }
-                            carPartStatusRef?.update(mapOf(
-                                "status" to "Good"
-                            ))
+                            carPartStatusRef?.update(
+                                mapOf(
+                                    "status" to "Good"
+                                )
+                            )
+                            val carInfo = withContext(Dispatchers.IO + context) {
+                                carInfoRef.get().get()
+                            }
+                            val allParts = carInfo
+                                .reference
+                                .collection("carPartsStatus")
+                                .get()
+                            val allPartsRef = allParts.get()
+                            val allPartsSize = allPartsRef.size()
+                            val goodParts = carInfo
+                                .reference
+                                .collection("carPartsStatus")
+                                .whereEqualTo("status", "Good")
+                                .get()
+                            val goodPartsRef = goodParts.get()
+                            val goodPartsSize = goodPartsRef.size()
+                            val newHealthScore: Int = (100 * goodPartsSize) / allPartsSize
+                            carInfoRef?.update(
+                                mapOf(
+                                    "carHealth" to newHealthScore
+                                )
+                            )
                             call.respond(
                                 HttpStatusCode.OK, MarkAsRepairedResponse()
                             )
@@ -266,8 +307,7 @@ fun Application.configureRouting() {
                             )
                             return@collectLatest
                         }
-                    }
-                    else {
+                    } else {
                         call.respond(
                             HttpStatusCode.Unauthorized,
                             MarkAsRepairedResponse(failure = "Failure to mark part as repaired: Authorization token not valid")
@@ -279,7 +319,10 @@ fun Application.configureRouting() {
         post("/bookAppointment") {
             val authHeader = call.request.headers["Authorization"]
             if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-                call.respond(HttpStatusCode.Unauthorized, HomeResponse(failure = "Failure to book appointment: Missing or invalid authorization"))
+                call.respond(
+                    HttpStatusCode.Unauthorized,
+                    HomeResponse(failure = "Failure to book appointment: Missing or invalid authorization")
+                )
                 return@post
             }
             val token = authHeader.removePrefix("Bearer ").trim()
@@ -325,14 +368,16 @@ fun Application.configureRouting() {
                             carInfoRef
                                 ?.collection("carPartScheduledService")
                                 ?.document(request.id)
-                                ?.set(mapOf(
-                                    "place" to request.place,
-                                    "hasBeenBooked" to false,
-                                    "bookingState" to BookingState.WAITING_TO_BE_BOOKED,
-                                    "carPartStatusRef" to carPartStatusRef,
-                                    "scheduledFor" to request.timeDate,
-                                    "email" to request.email
-                                ))
+                                ?.set(
+                                    mapOf(
+                                        "place" to request.place,
+                                        "hasBeenBooked" to false,
+                                        "bookingState" to BookingState.WAITING_TO_BE_BOOKED,
+                                        "carPartStatusRef" to carPartStatusRef,
+                                        "scheduledFor" to request.timeDate,
+                                        "email" to request.email
+                                    )
+                                )
                             call.respond(
                                 HttpStatusCode.OK, BookingResponse()
                             )
@@ -345,8 +390,7 @@ fun Application.configureRouting() {
                             )
                             return@collectLatest
                         }
-                    }
-                    else {
+                    } else {
                         call.respond(
                             HttpStatusCode.Unauthorized,
                             BookingResponse(failure = "Failure to book appointment: Authorization token not valid")
@@ -362,7 +406,10 @@ fun Application.configureRouting() {
             val context = this.coroutineContext
             val authHeader = call.request.headers["Authorization"]
             if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-                call.respond(HttpStatusCode.Unauthorized, HomeResponse(failure = "Failure to fetch alerts: Missing or invalid authorization"))
+                call.respond(
+                    HttpStatusCode.Unauthorized,
+                    HomeResponse(failure = "Failure to fetch alerts: Missing or invalid authorization")
+                )
                 return@get
             }
             val token = authHeader.removePrefix("Bearer ").trim()
@@ -383,7 +430,7 @@ fun Application.configureRouting() {
                                 call.respond(HttpStatusCode.OK, alertsResponse)
                                 return@collect
                             }
-                            val carInfoRef = userData?.get("carInfoRef") as DocumentReference
+                            val carInfoRef = userData["carInfoRef"] as DocumentReference
                             val carInfo = withContext(Dispatchers.IO + context) {
                                 carInfoRef.get().get()
                             }
@@ -406,7 +453,9 @@ fun Application.configureRouting() {
                                         .collection("carPartsStatus")
                                         .document(it.id)
 
-                                    val description = partDoc.get().get().data?.get("description").toString().takeIf { desc -> desc.isBlank().not() }
+                                    val description =
+                                        partDoc.get().get().data?.get("description").toString()
+                                            .takeIf { desc -> desc.isBlank().not() }
                                     val part = Alert(
                                         name = it.data["name"] as String,
                                         category = it.data["category"] as String,
@@ -415,12 +464,15 @@ fun Application.configureRouting() {
                                         id = it.id
                                     )
                                     if (description.isNullOrEmpty() || description == "null") {
-                                        geminiService.generateAlertSummary(alert = part).collect { geminiResponse ->
-                                            part.summary = geminiResponse?.summary ?: ""
-                                        }
-                                        partDoc.update(mapOf(
-                                            "description" to part.summary
-                                        ))
+                                        geminiService.generateAlertSummary(alert = part)
+                                            .collect { geminiResponse ->
+                                                part.summary = geminiResponse?.summary ?: ""
+                                            }
+                                        partDoc.update(
+                                            mapOf(
+                                                "description" to part.summary
+                                            )
+                                        )
                                     } else {
                                         part.summary = description
                                     }
@@ -438,7 +490,9 @@ fun Application.configureRouting() {
                                         .reference
                                         .collection("carPartsStatus")
                                         .document(it.id)
-                                    val description = partDoc.get().get().data?.get("description").toString().takeIf { desc -> desc.isBlank().not() }
+                                    val description =
+                                        partDoc.get().get().data?.get("description").toString()
+                                            .takeIf { desc -> desc.isBlank().not() }
                                     val part = Alert(
                                         name = it.data["name"] as String,
                                         category = it.data["category"] as String,
@@ -447,12 +501,15 @@ fun Application.configureRouting() {
                                         id = it.id
                                     )
                                     if (description.isNullOrEmpty() || description == "null") {
-                                        geminiService.generateAlertSummary(alert = part).collect { geminiResponse ->
-                                            part.summary = geminiResponse?.summary ?: ""
-                                        }
-                                        partDoc.update(mapOf(
-                                            "description" to part.summary
-                                        ))
+                                        geminiService.generateAlertSummary(alert = part)
+                                            .collect { geminiResponse ->
+                                                part.summary = geminiResponse?.summary ?: ""
+                                            }
+                                        partDoc.update(
+                                            mapOf(
+                                                "description" to part.summary
+                                            )
+                                        )
                                     } else {
                                         part.summary = description
                                     }
@@ -481,7 +538,10 @@ fun Application.configureRouting() {
             val context = this.coroutineContext
             val authHeader = call.request.headers["Authorization"]
             if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-                call.respond(HttpStatusCode.Unauthorized, HomeResponse(failure = "Failure to fetch home page data: Missing or invalid authorization"))
+                call.respond(
+                    HttpStatusCode.Unauthorized,
+                    HomeResponse(failure = "Failure to fetch home page data: Missing or invalid authorization")
+                )
                 return@get
             }
             val token = authHeader.removePrefix("Bearer ").trim()
@@ -493,74 +553,80 @@ fun Application.configureRouting() {
                         val userDoc = firestore
                             .collection("users")
                             .document(uid)
-                            try {
-                                var homeResponse = HomeResponse()
-                                val userData = userDoc.get().get().data
-                                if (userData == null) {
-                                    call.respond(HttpStatusCode.OK, homeResponse)
-                                    return@collect
-                                }
-                                val carInfoRef = if (userData?.get("carInfoRef") == "") {
-                                    null
-                                } else {
-                                    userData?.get("carInfoRef") as? DocumentReference
-                                }
-                                val carInfo = carInfoRef?.get()?.get()
-                                if (carInfo?.exists() == false || carInfoRef == null) {
-                                    call.respond(HttpStatusCode.OK, homeResponse)
-                                    return@collect
-                                } else {
-                                    homeResponse = homeResponse.copy(
-                                        data = HomeData(
-                                            mileage = carInfo?.data?.get("mileage").toString().toIntOrNull() ?: 0,
-                                            healthScore = carInfo?.data?.get("carHealth").toString().toIntOrNull() ?: 0,
-                                            model = carInfo?.data?.get("model").toString(),
-                                            make = carInfo?.data?.get("make").toString(),
-                                            repairs = (userData["repairs"] as Long).toInt(),
-                                            reports = (userData["uploads"] as Long).toInt(),
-                                        ),
-                                    )
-                                    val mediumParts = carInfo
-                                        ?.reference
-                                        ?.collection("carPartsStatus")
-                                        ?.whereEqualTo("status", "Medium")
-                                        ?.get()
-
-                                    val mediumPartRef =
-                                        withContext(Dispatchers.IO + context) {
-                                            mediumParts?.get()
-                                        }?.size()
-                                    homeResponse = homeResponse.copy(homeResponse.data?.copy(alerts = mediumPartRef))
-
-                                    val badParts = carInfo
-                                        ?.reference
-                                        ?.collection("carPartsStatus")
-                                        ?.whereEqualTo("status", "Bad")
-                                        ?.get()
-                                    val badPartsRef =
-                                        withContext(Dispatchers.IO + context) {
-                                            badParts?.get()
-                                        }?.size()
-                                    homeResponse = homeResponse.copy(
-                                        homeResponse.data?.copy(
-                                            alerts = (homeResponse.data?.alerts?.plus(badPartsRef ?: 0))
-                                                ?: (0 + (badPartsRef ?: 0))
-                                        )
-                                    )
-                                    call.respond(HttpStatusCode.OK, homeResponse)
-                                    return@collect
-                                }
-                            } catch (e: Exception) {
-                                logError(call, e)
-                                call.respond(
-                                    HttpStatusCode.InternalServerError,
-                                    HomeResponse(failure = "Failure to fetch home page data: ${e.localizedMessage}"))
+                        try {
+                            var homeResponse = HomeResponse()
+                            val userData = userDoc.get().get().data
+                            if (userData == null) {
+                                call.respond(HttpStatusCode.OK, homeResponse)
                                 return@collect
                             }
+                            val carInfoRef = if (userData?.get("carInfoRef") == "") {
+                                null
+                            } else {
+                                userData?.get("carInfoRef") as? DocumentReference
+                            }
+                            val carInfo = carInfoRef?.get()?.get()
+                            if (carInfo?.exists() == false || carInfoRef == null) {
+                                call.respond(HttpStatusCode.OK, homeResponse)
+                                return@collect
+                            } else {
+                                homeResponse = homeResponse.copy(
+                                    data = HomeData(
+                                        mileage = carInfo?.data?.get("mileage").toString()
+                                            .toIntOrNull() ?: 0,
+                                        healthScore = carInfo?.data?.get("carHealth").toString()
+                                            .toIntOrNull() ?: 0,
+                                        model = carInfo?.data?.get("model").toString(),
+                                        make = carInfo?.data?.get("make").toString(),
+                                        recalls = carInfo?.data?.get("make").toString()
+                                            .toIntOrNull(),
+                                        repairs = (userData["repairs"] as Long).toInt(),
+                                    ),
+                                )
+                                val mediumParts = carInfo
+                                    ?.reference
+                                    ?.collection("carPartsStatus")
+                                    ?.whereEqualTo("status", "Medium")
+                                    ?.get()
+
+                                val mediumPartRef =
+                                    withContext(Dispatchers.IO + context) {
+                                        mediumParts?.get()
+                                    }?.size()
+                                homeResponse =
+                                    homeResponse.copy(homeResponse.data?.copy(alerts = mediumPartRef))
+
+                                val badParts = carInfo
+                                    ?.reference
+                                    ?.collection("carPartsStatus")
+                                    ?.whereEqualTo("status", "Bad")
+                                    ?.get()
+                                val badPartsRef =
+                                    withContext(Dispatchers.IO + context) {
+                                        badParts?.get()
+                                    }?.size()
+                                homeResponse = homeResponse.copy(
+                                    homeResponse.data?.copy(
+                                        alerts = (homeResponse.data?.alerts?.plus(badPartsRef ?: 0))
+                                            ?: (0 + (badPartsRef ?: 0))
+                                    )
+                                )
+                                call.respond(HttpStatusCode.OK, homeResponse)
+                                return@collect
+                            }
+                        } catch (e: Exception) {
+                            logError(call, e)
+                            call.respond(
+                                HttpStatusCode.InternalServerError,
+                                HomeResponse(failure = "Failure to fetch home page data: ${e.localizedMessage}")
+                            )
+                            return@collect
+                        }
                     } else {
                         call.respond(
                             HttpStatusCode.Unauthorized,
-                            HomeResponse(failure = "Failure to fetch home page data: Authorization token not valid"))
+                            HomeResponse(failure = "Failure to fetch home page data: Authorization token not valid")
+                        )
                         return@collect
                     }
                 }
@@ -568,7 +634,10 @@ fun Application.configureRouting() {
         post("/upload") {
             val authHeader = call.request.headers["Authorization"]
             if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-                call.respond(HttpStatusCode.Unauthorized, HomeResponse(failure = "Failure to upload report: Missing or invalid authorization"))
+                call.respond(
+                    HttpStatusCode.Unauthorized,
+                    HomeResponse(failure = "Failure to upload report: Missing or invalid authorization")
+                )
                 return@post
             }
             val token = authHeader.removePrefix("Bearer ").trim()
@@ -585,7 +654,8 @@ fun Application.configureRouting() {
                                 if (carReportData?.isImageValid == false) {
                                     call.respond(
                                         HttpStatusCode.BadRequest,
-                                        UploadResponse(failure = "Failure to upload report: Invalid report image"))
+                                        UploadResponse(failure = "Failure to upload report: Invalid report image")
+                                    )
                                     return@collectLatest
                                 } else {
                                     try {
@@ -596,7 +666,8 @@ fun Application.configureRouting() {
                                         if (userData == null) {
                                             call.respond(
                                                 HttpStatusCode.InternalServerError,
-                                                UploadResponse(failure = "Failure to upload report: No user found"))
+                                                UploadResponse(failure = "Failure to upload report: No user found")
+                                            )
                                             return@collectLatest
                                         }
                                         val carInfoRef = if (userData?.get("carInfoRef") == "") {
@@ -615,23 +686,34 @@ fun Application.configureRouting() {
                                                         "uploads" to FieldValue.increment(1),
                                                     )
                                                 )
-                                                newCarInfoRef.set(mapOf(
-                                                    "make" to carReportData.carMake,
-                                                    "mileage" to carReportData.carMileage,
-                                                    "model" to carReportData.carModel,
-                                                    "year" to carReportData.carYear,
-                                                    "carHealth" to carReportData.healthScore,
-                                                ))
+                                                var recalls: Int? =
+                                                    if (carReportData.carMake.isNotBlank() && carReportData.carModel.isNotBlank() && carReportData.carYear.isNotBlank()) {
+                                                        0
+                                                    } else {
+                                                        null
+                                                    }
+                                                newCarInfoRef.set(
+                                                    mapOf(
+                                                        "make" to carReportData.carMake,
+                                                        "mileage" to carReportData.carMileage,
+                                                        "model" to carReportData.carModel,
+                                                        "year" to carReportData.carYear,
+                                                        "carHealth" to carReportData.healthScore,
+                                                        "recalls" to recalls
+                                                    )
+                                                )
                                                 carReportData.parts.forEach { part ->
                                                     newCarInfoRef
                                                         .collection("carPartsStatus")
                                                         .document()
-                                                        .set(mapOf(
-                                                            "category" to part.category,
-                                                            "name" to part.partName,
-                                                            "status" to part.status,
-                                                            "updatedDate" to Timestamp(System.currentTimeMillis())
-                                                        ))
+                                                        .set(
+                                                            mapOf(
+                                                                "category" to part.category,
+                                                                "name" to part.partName,
+                                                                "status" to part.status,
+                                                                "updatedDate" to Timestamp(System.currentTimeMillis())
+                                                            )
+                                                        )
                                                 }
                                             }
                                         } else {
@@ -640,7 +722,12 @@ fun Application.configureRouting() {
                                                     "uploads" to FieldValue.increment(1),
                                                 )
                                             )
-                                            if (carInfoRefData["make"] == "" || carInfoRefData["model"] == "" || carInfoRefData["year"] == "") {
+                                            if (!carInfoRefData["make"].toString().isNullOrBlank()
+                                                || !carInfoRefData["model"].toString()
+                                                    .isNullOrBlank()
+                                                || !carInfoRefData["year"].toString()
+                                                    .isNullOrBlank()
+                                            ) {
                                                 carInfoRef.update(
                                                     mapOf(
                                                         "make" to carReportData?.carMake,
@@ -648,41 +735,47 @@ fun Application.configureRouting() {
                                                         "model" to carReportData?.carModel,
                                                         "year" to carReportData?.carYear,
                                                         "carHealth" to carReportData?.healthScore,
-                                                    ))
+                                                    )
+                                                )
                                             }
                                             carInfoRef.update(
                                                 mapOf(
                                                     "carHealth" to carReportData?.healthScore,
-                                                ))
+                                                )
+                                            )
                                             val docs = carInfoRef
                                                 .collection("carPartsStatus")
                                                 .get()
                                                 .get()
                                                 .documents
                                             for (doc in docs) {
-                                                carInfoRef.collection("carPartsStatus").document(doc.id).delete()
+                                                carInfoRef.collection("carPartsStatus")
+                                                    .document(doc.id).delete()
                                             }
                                             carReportData?.parts?.forEach { part ->
                                                 carInfoRef
                                                     .collection("carPartsStatus")
                                                     .document()
-                                                    .set(mapOf(
-                                                        "category" to part.category,
-                                                        "name" to part.partName,
-                                                        "status" to part.status,
-                                                        "updatedDate" to Timestamp(System.currentTimeMillis())
-                                                    ))
+                                                    .set(
+                                                        mapOf(
+                                                            "category" to part.category,
+                                                            "name" to part.partName,
+                                                            "status" to part.status,
+                                                            "updatedDate" to Timestamp(System.currentTimeMillis())
+                                                        )
+                                                    )
                                             }
                                         }
                                         call.respond(HttpStatusCode.OK, UploadResponse())
                                         // Store carInfoReference and set it to the user's doc
                                         // Store Gemini API key in GCP!
                                         return@collectLatest
-                                    }catch(e: Exception) {
+                                    } catch (e: Exception) {
                                         logError(call, e)
                                         call.respond(
                                             HttpStatusCode.InternalServerError,
-                                            UploadResponse(failure = "Failure to upload report: ${e.localizedMessage}"))
+                                            UploadResponse(failure = "Failure to upload report: ${e.localizedMessage}")
+                                        )
                                         return@collectLatest
                                     }
                                 }
@@ -690,7 +783,8 @@ fun Application.configureRouting() {
                     } else {
                         call.respond(
                             HttpStatusCode.Unauthorized,
-                            CreateUserProfileResponse("Failure to upload report: Authorization token not valid"))
+                            CreateUserProfileResponse("Failure to upload report: Authorization token not valid")
+                        )
                         return@collectLatest
                     }
                 }
@@ -698,7 +792,10 @@ fun Application.configureRouting() {
         post("/createUserProfile") {
             val authHeader = call.request.headers["Authorization"]
             if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-                call.respond(HttpStatusCode.Unauthorized, HomeResponse(failure = "Failure to create user profile: Missing or invalid authorization"))
+                call.respond(
+                    HttpStatusCode.Unauthorized,
+                    HomeResponse(failure = "Failure to create user profile: Missing or invalid authorization")
+                )
                 return@post
             }
             val token = authHeader.removePrefix("Bearer ").trim()
@@ -722,7 +819,10 @@ fun Application.configureRouting() {
                                     CreateUserProfileResponse("Failed to create user profile")
                                 )
                             }
-                            call.respond(HttpStatusCode.InternalServerError, CreateUserProfileResponse("Failure to create user profile"))
+                            call.respond(
+                                HttpStatusCode.InternalServerError,
+                                CreateUserProfileResponse("Failure to create user profile")
+                            )
                             return@collectLatest
                         }
 
@@ -744,13 +844,19 @@ fun Application.configureRouting() {
                                         )
                                     val userDoc = userDocRef.get().get()
                                     if (userDoc.exists()) {
-                                        call.respond(HttpStatusCode.Created, CreateUserProfileResponse())
+                                        call.respond(
+                                            HttpStatusCode.Created,
+                                            CreateUserProfileResponse()
+                                        )
                                         return@withContext
                                     } else {
                                         userDocRef.set(userObj)
                                     }
 
-                                    call.respond(HttpStatusCode.Created, CreateUserProfileResponse())
+                                    call.respond(
+                                        HttpStatusCode.Created,
+                                        CreateUserProfileResponse()
+                                    )
                                     return@withContext
                                 }
                             } catch (e: Exception) {
@@ -771,7 +877,10 @@ fun Application.configureRouting() {
             val context = this.coroutineContext
             val authHeader = call.request.headers["Authorization"]
             if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-                call.respond(HttpStatusCode.Unauthorized, HomeResponse(failure = "Failure to manually enter card data: Missing or invalid authorization"))
+                call.respond(
+                    HttpStatusCode.Unauthorized,
+                    HomeResponse(failure = "Failure to manually enter card data: Missing or invalid authorization")
+                )
                 return@post
             }
             val token = authHeader.removePrefix("Bearer ").trim()
@@ -796,7 +905,10 @@ fun Application.configureRouting() {
                                     ManualEntryResponse("Failure to manually enter card data: Failed to enter car info")
                                 )
                             }
-                            call.respond(HttpStatusCode.InternalServerError, ManualEntryResponse("Failure to manually enter card data: Failed to enter car info"))
+                            call.respond(
+                                HttpStatusCode.InternalServerError,
+                                ManualEntryResponse("Failure to manually enter card data: Failed to enter car info")
+                            )
                             return@collectLatest
                         }
 
@@ -810,7 +922,10 @@ fun Application.configureRouting() {
                                     userDoc.get().get()
                                 }.data
                                 if (userData == null) {
-                                    call.respond(HttpStatusCode.BadRequest, ManualEntryResponse("Failure to manually enter card data: User could not be found"))
+                                    call.respond(
+                                        HttpStatusCode.BadRequest,
+                                        ManualEntryResponse("Failure to manually enter card data: User could not be found")
+                                    )
                                     return@collectLatest
                                 }
                                 val carInfoRef = userData?.get("carInfoRef") as DocumentReference
@@ -829,19 +944,31 @@ fun Application.configureRouting() {
                                 val year = request.year.ifBlank {
                                     carInfoData?.get("year") ?: ""
                                 }
-                                carInfoRef.set(mapOf(
-                                    "make" to make,
-                                    "model" to model,
-                                    "year" to year,
-                                    "mileage" to mileage,
-                                    "carHealth" to (carInfoData?.get("carHealth") ?: ""),
-                                ))
+                                var recalls: Int? = if (!make.toString().isNullOrBlank()
+                                    && !model.toString().isNullOrBlank()
+                                    && !year.toString().isNullOrBlank()
+                                ) {
+                                    0
+                                } else {
+                                    null
+                                }
+                                carInfoRef.set(
+                                    mapOf(
+                                        "make" to make,
+                                        "model" to model,
+                                        "year" to year,
+                                        "mileage" to mileage,
+                                        "carHealth" to (carInfoData?.get("carHealth") ?: ""),
+                                        "recalls" to recalls
+                                    )
+                                )
                                 call.respond(HttpStatusCode.OK, ManualEntryResponse())
                                 return@collectLatest
                             } catch (e: Exception) {
                                 call.respond(
                                     HttpStatusCode.InternalServerError,
-                                    ManualEntryResponse(failure = "Failure to manually enter card data: ${e.localizedMessage}"))
+                                    ManualEntryResponse(failure = "Failure to manually enter card data: ${e.localizedMessage}")
+                                )
                                 return@collectLatest
                             }
                         }
@@ -853,7 +980,10 @@ fun Application.configureRouting() {
             val context = this.coroutineContext
             val authHeader = call.request.headers["Authorization"]
             if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-                call.respond(HttpStatusCode.Unauthorized, HomeResponse(failure = "Failure to fetch open recalls: Missing or invalid authorization"))
+                call.respond(
+                    HttpStatusCode.Unauthorized,
+                    HomeResponse(failure = "Failure to fetch open recalls: Missing or invalid authorization")
+                )
                 return@get
             }
             val token = authHeader.removePrefix("Bearer ").trim()
@@ -865,19 +995,22 @@ fun Application.configureRouting() {
                             verificationState.error?.let { errorState ->
                                 if (errorState == VerificationErrorState.TokenRevoked) call.respond(
                                     HttpStatusCode.Unauthorized,
-                                    RecallsResponse(failure="Failure to fetch open recalls: Authorization token has expired")
+                                    RecallsResponse(failure = "Failure to fetch open recalls: Authorization token has expired")
                                 )
                                 if (errorState == VerificationErrorState.MissingToken) call.respond(
                                     HttpStatusCode.Unauthorized,
-                                    RecallsResponse(failure="Failure to fetch open recalls: \"Missing authorization token\"")
+                                    RecallsResponse(failure = "Failure to fetch open recalls: \"Missing authorization token\"")
                                 )
                                 if (errorState == VerificationErrorState.FailedToParseToken) call.respond(
 
                                     HttpStatusCode.InternalServerError,
-                                    RecallsResponse(failure="Failure to fetch open recalls: Failed to fetch recall info")
+                                    RecallsResponse(failure = "Failure to fetch open recalls: Failed to fetch recall info")
                                 )
                             }
-                            call.respond(HttpStatusCode.InternalServerError, RecallsResponse(failure="Failure to fetch open recalls: Failed to fetch recall info"))
+                            call.respond(
+                                HttpStatusCode.InternalServerError,
+                                RecallsResponse(failure = "Failure to fetch open recalls: Failed to fetch recall info")
+                            )
                             return@collectLatest
                         }
 
@@ -891,7 +1024,8 @@ fun Application.configureRouting() {
                                 if (userData == null) {
                                     call.respond(
                                         HttpStatusCode.InternalServerError,
-                                        UploadResponse(failure = "Failure to fetch open recalls: No user found"))
+                                        UploadResponse(failure = "Failure to fetch open recalls: No user found")
+                                    )
                                     return@collectLatest
                                 }
                                 val carInfoRef = userData?.get("carInfoRef") as? DocumentReference
@@ -900,26 +1034,34 @@ fun Application.configureRouting() {
                                 }
                                 val carInfoData = carInfo?.data
                                 if (carInfoData == null) {
-                                    call.respond(HttpStatusCode.InternalServerError, RecallsResponse(failure="Failure to fetch open recalls: Incomplete car info"))
+                                    call.respond(
+                                        HttpStatusCode.InternalServerError,
+                                        RecallsResponse(failure = "Failure to fetch open recalls: Incomplete car info")
+                                    )
                                     return@collectLatest
                                 }
-                                val year = carInfoData?.get("year") as? Int
+                                val year = carInfoData?.get("year") as? String
                                 val make = carInfoData?.get("make") as? String
                                 val model = carInfoData?.get("model") as? String
-                                if (make.isNullOrBlank() || model.isNullOrBlank() || year == null) {
-                                    call.respond(HttpStatusCode.InternalServerError, RecallsResponse(failure="Failure to fetch open recalls: Incomplete car info"))
+                                if (make.isNullOrBlank() || model.isNullOrBlank() || year.isNullOrBlank()) {
+                                    call.respond(
+                                        HttpStatusCode.InternalServerError,
+                                        RecallsResponse(failure = "Failure to fetch open recalls: Incomplete car info")
+                                    )
                                     return@collectLatest
                                 }
                                 recallService
                                     .queryRecallStatus(year, make, model)
                                     .collectLatest { publicRecallResponse ->
                                         try {
-                                            val recallsSubcollectionRef = carInfoRef?.collection("recalls")
+                                            val recallsSubcollectionRef =
+                                                carInfoRef?.collection("recalls")
                                             if (recallsSubcollectionRef == null) {
                                                 call.respond(HttpStatusCode.OK, RecallsResponse(0))
                                                 return@collectLatest
                                             }
-                                            val numRecallsStored = recallsSubcollectionRef?.get()?.get()?.size()
+                                            val numRecallsStored =
+                                                recallsSubcollectionRef?.get()?.get()?.size() ?: 0
                                             val campaignNumbers = HashSet<String>()
                                             val querySnapshot = recallsSubcollectionRef?.get()
                                             var recallsResponse = RecallsResponse(numRecallsStored)
@@ -928,72 +1070,101 @@ fun Application.configureRouting() {
                                                     count = numRecallsStored,
                                                     recalls = querySnapshot?.get()?.documents?.map { document ->
                                                         RecallItem(
-                                                            shortSummary = document.get("shortSummary").toString(),
-                                                            nhtsaCampaignNumber = document.get("nhtsaCampaignNumber").toString(),
-                                                            manufacturer = document.get("manufacturer").toString(),
-                                                            reportReceivedDate = document.get("reportReceivedDate").toString(),
-                                                            component = document.get("component").toString(),
-                                                            summary = document.get("summary").toString(),
-                                                            consequence = document.get("consequence").toString(),
-                                                            remedy = document.get("remedy").toString(),
-                                                            notes = document.get("notes").toString(),
-                                                            status = document.get("status").toString(),
+                                                            nhtsaCampaignNumber = document.get("nhtsaCampaignNumber")
+                                                                .toString(),
+                                                            manufacturer = document.get("manufacturer")
+                                                                .toString(),
+                                                            reportReceivedDate = document.get("reportReceivedDate")
+                                                                .toString(),
+                                                            component = document.get("component")
+                                                                .toString(),
+                                                            summary = document.get("summary")
+                                                                .toString(),
+                                                            consequence = document.get("consequence")
+                                                                .toString(),
+                                                            remedy = document.get("remedy")
+                                                                .toString(),
+                                                            notes = document.get("notes")
+                                                                .toString(),
+                                                            status = document.get("status")
+                                                                .toString(),
                                                         )
                                                     },
+                                                )
+                                                val recallsAmount =
+                                                    recallsResponse.recalls?.size ?: 0
+                                                carInfoRef.update(
+                                                    mapOf(
+                                                        "recalls" to recallsAmount
+                                                    )
                                                 )
                                                 call.respond(HttpStatusCode.OK, recallsResponse)
                                                 return@collectLatest
                                             }
                                             querySnapshot?.get()?.documents?.forEach { document ->
-                                                val campaignNumber = document.get("nhtsaCampaignNumber") as? String ?: ""
+                                                val campaignNumber =
+                                                    document.get("nhtsaCampaignNumber") as? String
+                                                        ?: ""
                                                 campaignNumbers.add(campaignNumber)
                                             }
-                                            if (numRecallsStored != publicRecallResponse.count) {
-                                                recallService.removeDuplicateRecallItems(publicRecallResponse, campaignNumbers)
-                                                geminiService
-                                                    .generateShortSummariesForRecalls(publicRecallResponse)
-                                                    .collectLatest { geminiRecallShortSummaryData ->
-                                                        geminiRecallShortSummaryData?.recallsItems?.forEachIndexed { idx, recallShortSummaryItem ->
-                                                            val recallRef = recallsSubcollectionRef?.document()
-                                                            val publicRecallObjectData = publicRecallResponse.results[idx]
-                                                            recallRef?.set(mapOf(
-                                                                "shortSummary" to recallShortSummaryItem.title,
-                                                                "nhtsaCampaignNumber" to publicRecallObjectData.nhtsaCampaignNumber,
-                                                                "manufacturer" to publicRecallObjectData.manufacturer,
-                                                                "reportReceivedDate" to publicRecallObjectData.reportReceivedDate,
-                                                                "component" to publicRecallObjectData.component,
-                                                                "summary" to publicRecallObjectData.summary,
-                                                                "consequence" to publicRecallObjectData.consequence,
-                                                                "remedy" to publicRecallObjectData.remedy,
-                                                                "notes" to publicRecallObjectData.notes,
-                                                                "status" to "INCOMPLETE"
-                                                            ))
-                                                        }
-                                                    }
+                                            if (numRecallsStored <= publicRecallResponse.count) {
+                                                recallService.removeDuplicateRecallItems(
+                                                    publicRecallResponse,
+                                                    campaignNumbers
+                                                )
+                                                publicRecallResponse.results.forEach { publicRecallObject ->
+                                                    val recallRef =
+                                                        recallsSubcollectionRef?.document()
+                                                    recallRef?.set(
+                                                        mapOf(
+                                                            "nhtsaCampaignNumber" to publicRecallObject.nhtsaCampaignNumber,
+                                                            "manufacturer" to publicRecallObject.manufacturer,
+                                                            "reportReceivedDate" to publicRecallObject.reportReceivedDate,
+                                                            "component" to publicRecallObject.component,
+                                                            "summary" to publicRecallObject.summary,
+                                                            "consequence" to publicRecallObject.consequence,
+                                                            "remedy" to publicRecallObject.remedy,
+                                                            "notes" to publicRecallObject.notes,
+                                                            "status" to "INCOMPLETE"
+                                                        )
+                                                    )
+                                                }
                                             }
                                             recallsResponse = recallsResponse.copy(
                                                 count = numRecallsStored,
                                                 recalls = querySnapshot?.get()?.documents?.map { document ->
                                                     RecallItem(
-                                                        shortSummary = document.get("shortSummary").toString(),
-                                                        nhtsaCampaignNumber = document.get("nhtsaCampaignNumber").toString(),
-                                                        manufacturer = document.get("manufacturer").toString(),
-                                                        reportReceivedDate = document.get("reportReceivedDate").toString(),
-                                                        component = document.get("component").toString(),
-                                                        summary = document.get("summary").toString(),
-                                                        consequence = document.get("consequence").toString(),
+                                                        nhtsaCampaignNumber = document.get("nhtsaCampaignNumber")
+                                                            .toString(),
+                                                        manufacturer = document.get("manufacturer")
+                                                            .toString(),
+                                                        reportReceivedDate = document.get("reportReceivedDate")
+                                                            .toString(),
+                                                        component = document.get("component")
+                                                            .toString(),
+                                                        summary = document.get("summary")
+                                                            .toString(),
+                                                        consequence = document.get("consequence")
+                                                            .toString(),
                                                         remedy = document.get("remedy").toString(),
                                                         notes = document.get("notes").toString(),
                                                         status = document.get("status").toString(),
                                                     )
                                                 },
                                             )
+                                            val recallsAmount = recallsResponse.recalls?.size ?: 0
+                                            carInfoRef.update(
+                                                mapOf(
+                                                    "recalls" to recallsAmount
+                                                )
+                                            )
                                             call.respond(HttpStatusCode.OK, recallsResponse)
                                             return@collectLatest
                                         } catch (e: Exception) {
                                             call.respond(
                                                 HttpStatusCode.InternalServerError,
-                                                HomeResponse(failure = "Failure to fetch open recalls: ${e.localizedMessage}"))
+                                                HomeResponse(failure = "Failure to fetch open recalls: ${e.localizedMessage}")
+                                            )
                                             return@collectLatest
                                         }
                                     }
@@ -1001,7 +1172,8 @@ fun Application.configureRouting() {
                             } catch (e: Exception) {
                                 call.respond(
                                     HttpStatusCode.InternalServerError,
-                                    HomeResponse(failure = "Failure to fetch open recalls: ${e.localizedMessage}"))
+                                    HomeResponse(failure = "Failure to fetch open recalls: ${e.localizedMessage}")
+                                )
                                 return@collectLatest
                             }
                         }
@@ -1013,7 +1185,10 @@ fun Application.configureRouting() {
             val context = this.coroutineContext
             val authHeader = call.request.headers["Authorization"]
             if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-                call.respond(HttpStatusCode.Unauthorized, HomeResponse(failure = "Failure to complete open recall: Missing or invalid authorization"))
+                call.respond(
+                    HttpStatusCode.Unauthorized,
+                    HomeResponse(failure = "Failure to complete open recall: Missing or invalid authorization")
+                )
                 return@post
             }
             val token = authHeader.removePrefix("Bearer ").trim()
@@ -1068,17 +1243,35 @@ fun Application.configureRouting() {
                                     )
                                     return@collectLatest
                                 }
-                                val recallsItemRef = carInfoRef?.collection("recalls")?.whereEqualTo("nhtsaCampaignNumber", request.nhtsaCampaignNumber)?.get() as DocumentReference
-                                if (recallsItemRef.get().get().data == null) {
+                                val filteredRecalls = carInfoRef
+                                    ?.collection("recalls")
+                                    ?.whereEqualTo(
+                                        "nhtsaCampaignNumber",
+                                        request.nhtsaCampaignNumber
+                                    )
+                                    ?.limit(1)
+                                    ?.get()
+                                if (filteredRecalls == null) {
                                     call.respond(
                                         HttpStatusCode.InternalServerError,
                                         CompleteRecallResponse("Failure to complete open recall: Recall not found")
                                     )
                                     return@collectLatest
                                 }
-                                recallsItemRef.update(mapOf(
-                                    "status" to "COMPLETE",
-                                ))
+                                val recallItemRef =
+                                    filteredRecalls.get()?.documents?.get(0)?.reference
+                                if (recallItemRef?.get()?.get()?.data == null) {
+                                    call.respond(
+                                        HttpStatusCode.InternalServerError,
+                                        CompleteRecallResponse("Failure to complete open recall: Recall not found")
+                                    )
+                                    return@collectLatest
+                                }
+                                recallItemRef?.update(
+                                    mapOf(
+                                        "status" to "COMPLETE",
+                                    )
+                                )
                                 call.respond(
                                     HttpStatusCode.OK, CompleteRecallResponse()
                                 )
@@ -1086,8 +1279,63 @@ fun Application.configureRouting() {
                             } catch (e: Exception) {
                                 call.respond(
                                     HttpStatusCode.InternalServerError,
-                                    CompleteRecallResponse(failure = "Failure to complete open recall: ${e.localizedMessage}"))
+                                    CompleteRecallResponse(failure = "Failure to complete open recall: ${e.localizedMessage}")
+                                )
                                 return@collectLatest
+                            }
+                        }
+                    }
+                }
+        }
+
+        post("/revokeTokens") {
+            val authHeader = call.request.headers["Authorization"]
+            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+                call.respond(
+                    HttpStatusCode.Unauthorized,
+                    HomeResponse(failure = "Failure to revoke tokens: Missing or invalid authorization")
+                )
+                return@post
+            }
+            val token = authHeader.removePrefix("Bearer ").trim()
+            verificationTokenService
+                .verifyAndCheckForTokenRevoked(token = token, getFirebaseToken = true)
+                .collectLatest { verificationState ->
+                    when (verificationState) {
+                        is VerificationState.VerificationStateFailure -> {
+                            verificationState.error?.let { errorState ->
+                                if (errorState == VerificationErrorState.TokenRevoked) call.respond(
+                                    HttpStatusCode.Unauthorized,
+                                    HomeResponse(failure = "Failure to revoke tokens: Authorization token has expired")
+                                )
+                                if (errorState == VerificationErrorState.MissingToken) call.respond(
+                                    HttpStatusCode.Unauthorized,
+                                    HomeResponse(failure = "Failure to revoke tokens: \"Missing authorization token\"")
+                                )
+                                if (errorState == VerificationErrorState.FailedToParseToken) call.respond(
+                                    HttpStatusCode.InternalServerError,
+                                    HomeResponse(failure = "Failure to revoke tokens")
+                                )
+                            }
+                            call.respond(
+                                HttpStatusCode.InternalServerError,
+                                HomeResponse(failure = "Failure to revoke tokens")
+                            )
+                            return@collectLatest
+                        }
+
+                        is VerificationState.VerificationStateSuccess -> {
+                            try {
+                                val uid = verificationState.firebaseToken?.uid ?: ""
+                                FirebaseAuth.getInstance().revokeRefreshTokens(uid)
+                                call.respond(
+                                    HttpStatusCode.OK, HomeResponse()
+                                )
+                            } catch (e: Exception) {
+                                call.respond(
+                                    HttpStatusCode.InternalServerError,
+                                    HomeResponse(failure = "Failure to revoke tokens: ${e.localizedMessage}")
+                                )
                             }
                         }
                     }
