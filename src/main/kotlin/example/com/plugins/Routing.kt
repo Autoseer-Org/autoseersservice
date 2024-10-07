@@ -648,7 +648,7 @@ fun Application.configureRouting() {
                     if (verificationStatus is VerificationState.VerificationStateSuccess) {
                         val image = request.image
                         geminiService
-                            .generateCarPartsFromImage(image)
+                            .generateCarInfoFromImage(image)
                             .collectLatest { carReportData ->
                                 val uid = verificationStatus.firebaseToken?.uid ?: ""
                                 if (carReportData?.isImageValid == false) {
@@ -699,7 +699,8 @@ fun Application.configureRouting() {
                                                         "model" to carReportData.carModel,
                                                         "year" to carReportData.carYear,
                                                         "carHealth" to carReportData.healthScore,
-                                                        "recalls" to recalls
+                                                        "recalls" to recalls,
+                                                        "estimatedCarPrice" to carReportData.estimatedCarPrice
                                                     )
                                                 )
                                                 carReportData.parts.forEach { part ->
