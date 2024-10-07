@@ -15,7 +15,7 @@ import kotlinx.serialization.json.*
 import java.util.*
 
 interface GeminiService {
-    suspend fun generateCarPartsFromImage(image: ByteArray): Flow<GeminiReportData?>
+    suspend fun generateCarInfoFromImage(image: ByteArray): Flow<GeminiReportData?>
     suspend fun generateRecommendedServices(carInfoModel: CarInfoModel): Flow<GeminiRecommendationModel?>
     suspend fun generateAlertSummary(alert: Alert): Flow<GeminiSummaryModel?>
     suspend fun generateShortSummariesForRecalls(publicRecallResponse: PublicRecallResponse): Flow<GeminiRecallShortSummaryData?>
@@ -35,7 +35,7 @@ class GeminiServiceImpl : GeminiService {
         return System.getenv("gemini_api_key") ?: ""
     }
 
-    override suspend fun generateCarPartsFromImage(image: ByteArray): Flow<GeminiReportData?> = flow {
+    override suspend fun generateCarInfoFromImage(image: ByteArray): Flow<GeminiReportData?> = flow {
         val based64Image = Base64.getEncoder().encodeToString(image)
         val requestBody = """
         {
@@ -48,8 +48,8 @@ class GeminiServiceImpl : GeminiService {
                  The idea is that we can generate a collection of car parts that are as generic as possible such that other multi checkpoint reports from other companies can easily be parsed and generate the same json response.
                   We care about the category that the part belongs too such as interior, exterior, etc. We also care about the make and model of the car as well as the year (json fields should be car_make, car_model, car_year and for the parts it should be carParts). 
                   If car make, model, and year were missing then fill them with empty strings. Lastly, you should look at the parts that need attention and the parts that are good and create overall health score for the car. it should range from 0 to 100 since it should a percentage value and the json field name should be carHealthScore (string).
-                   Finally, you should also add a field to the json for the total mileage of the car if it's found. If it's not found just fill it with an empty string. The json field name should be mileage. One more thing! Check if the image is a valid report of a car. If not, create a json field called is_image_valid that will be false else true if the car image is valid! You should looks for car reports like car inspections specifically"},
-                {
+                   Finally, you should also add a field to the json for the total mileage of the car if it's found. If it's not found just fill it with an empty string. The json field name should be mileage. One more thing! Check if the image is a valid report of a car. If not, create a json field called is_image_valid that will be false else true if the car image is valid! You should looks for car reports like car inspections specifically
+                   One more thing, you should be able to deduce the price of the car based on the current mileage, make, model, and current market price of the car. You should include it in json field called estimatedCarPrice which should be string of the price with the dollar sign. If you could not get the car make, model, and mileage, then, set the field to null"},
                   "inline_data": {
                     "mime_type":"image/jpeg",
                     "data": "$based64Image" 

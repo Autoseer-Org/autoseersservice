@@ -19,6 +19,8 @@ data class GeminiReportData(
     val healthScore: String,
     @SerialName("carParts")
     val parts: List<GeminiPartData>,
+    @SerialName("estimatedCarPrice")
+    val estimatedCarPrice: String?
 )
 
 @Serializable
