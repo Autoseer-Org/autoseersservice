@@ -578,7 +578,7 @@ fun Application.configureRouting() {
                                             .toIntOrNull() ?: 0,
                                         model = carInfo?.data?.get("model").toString(),
                                         make = carInfo?.data?.get("make").toString(),
-                                        recalls = carInfo?.data?.get("make").toString()
+                                        recalls = carInfo?.data?.get("recalls").toString()
                                             .toIntOrNull(),
                                         repairs = (userData["repairs"] as Long).toInt(),
                                     ),
