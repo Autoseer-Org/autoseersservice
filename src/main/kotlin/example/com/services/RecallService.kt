@@ -39,10 +39,8 @@ class RecallServiceImpl: RecallService {
             val response = client.get(publicRecallUrl) {
                 headers { append(HttpHeaders.Accept, ContentType.Application.Json) }
             }
-            println(response.bodyAsText())
             val jsonObject = Json.parseToJsonElement(response.bodyAsText()).jsonObject
             val jsonString = jsonObject.toString()
-            println(jsonObject)
             emit(Json.decodeFromString<PublicRecallResponse>(jsonString))
         } catch (e: Exception) {
             println("error: ${e.localizedMessage}")

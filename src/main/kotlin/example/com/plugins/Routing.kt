@@ -651,12 +651,11 @@ fun Application.configureRouting() {
                             .generateCarInfoFromImage(image)
                             .collectLatest { carReportData ->
                                 val uid = verificationStatus.firebaseToken?.uid ?: ""
-                                if (carReportData?.isImageValid == false) {
+                                if (carReportData?.isImageValid == false || carReportData == null || uid.isBlank()) {
                                     call.respond(
                                         HttpStatusCode.BadRequest,
                                         UploadResponse(failure = "Failure to upload report: Invalid report image")
                                     )
-                                    return@collectLatest
                                 } else {
                                     try {
                                         val userDoc = firestore
@@ -668,7 +667,6 @@ fun Application.configureRouting() {
                                                 HttpStatusCode.InternalServerError,
                                                 UploadResponse(failure = "Failure to upload report: No user found")
                                             )
-                                            return@collectLatest
                                         }
                                         val carInfoRef = if (userData?.get("carInfoRef") == "") {
                                             null
@@ -676,72 +674,68 @@ fun Application.configureRouting() {
                                             userData?.get("carInfoRef") as DocumentReference
                                         }
                                         val carInfoRefData = carInfoRef?.get()?.get()?.data
+                                        userDoc.update(
+                                            mapOf(
+                                                "uploads" to FieldValue.increment(1),
+                                            )
+                                        )
                                         if (carInfoRefData.isNullOrEmpty()) {
-                                            if (carReportData != null) {
-                                                val newCarInfoRef = firestore.collection("carInfo")
-                                                    .document()
-                                                userDoc.update(
-                                                    mapOf(
-                                                        "carInfoRef" to newCarInfoRef,
-                                                        "uploads" to FieldValue.increment(1),
-                                                    )
+                                            val newCarInfoRef = firestore.collection("carInfo")
+                                                .document()
+                                            userDoc.update(
+                                                mapOf(
+                                                    "carInfoRef" to newCarInfoRef,
                                                 )
-                                                var recalls: Int? =
-                                                    if (carReportData.carMake.isNotBlank() && carReportData.carModel.isNotBlank() && carReportData.carYear.isNotBlank()) {
-                                                        0
-                                                    } else {
-                                                        null
-                                                    }
-                                                newCarInfoRef.set(
+                                            )
+                                            val recalls: Int? =
+                                                if (carReportData.carMake.isNotBlank() && carReportData.carModel.isNotBlank() && carReportData.carYear.isNotBlank()) {
+                                                    0
+                                                } else {
+                                                    null
+                                                }
+                                            newCarInfoRef.set(
+                                                mapOf(
+                                                    "make" to carReportData.carMake,
+                                                    "mileage" to carReportData.carMileage,
+                                                    "model" to carReportData.carModel,
+                                                    "year" to carReportData.carYear,
+                                                    "carHealth" to carReportData.healthScore,
+                                                    "recalls" to recalls,
+                                                )
+                                            )
+                                            carReportData.parts.forEach { part ->
+                                                newCarInfoRef
+                                                    .collection("carPartsStatus")
+                                                    .document()
+                                                    .set(
+                                                        mapOf(
+                                                            "category" to part.category,
+                                                            "name" to part.partName,
+                                                            "status" to part.status,
+                                                            "updatedDate" to Timestamp(System.currentTimeMillis())
+                                                        )
+                                                    )
+                                            }
+                                        } else {
+                                            if (carInfoRefData["make"].toString().isNotBlank()
+                                                || carInfoRefData["model"].toString()
+                                                    .isNotBlank()
+                                                || carInfoRefData["year"].toString()
+                                                    .isNotBlank()
+                                            ) {
+                                                carInfoRef.update(
                                                     mapOf(
                                                         "make" to carReportData.carMake,
                                                         "mileage" to carReportData.carMileage,
                                                         "model" to carReportData.carModel,
                                                         "year" to carReportData.carYear,
                                                         "carHealth" to carReportData.healthScore,
-                                                        "recalls" to recalls,
-                                                        "estimatedCarPrice" to carReportData.estimatedCarPrice
-                                                    )
-                                                )
-                                                carReportData.parts.forEach { part ->
-                                                    newCarInfoRef
-                                                        .collection("carPartsStatus")
-                                                        .document()
-                                                        .set(
-                                                            mapOf(
-                                                                "category" to part.category,
-                                                                "name" to part.partName,
-                                                                "status" to part.status,
-                                                                "updatedDate" to Timestamp(System.currentTimeMillis())
-                                                            )
-                                                        )
-                                                }
-                                            }
-                                        } else {
-                                            userDoc.update(
-                                                mapOf(
-                                                    "uploads" to FieldValue.increment(1),
-                                                )
-                                            )
-                                            if (!carInfoRefData["make"].toString().isNullOrBlank()
-                                                || !carInfoRefData["model"].toString()
-                                                    .isNullOrBlank()
-                                                || !carInfoRefData["year"].toString()
-                                                    .isNullOrBlank()
-                                            ) {
-                                                carInfoRef.update(
-                                                    mapOf(
-                                                        "make" to carReportData?.carMake,
-                                                        "mileage" to carReportData?.carMileage,
-                                                        "model" to carReportData?.carModel,
-                                                        "year" to carReportData?.carYear,
-                                                        "carHealth" to carReportData?.healthScore,
                                                     )
                                                 )
                                             }
                                             carInfoRef.update(
                                                 mapOf(
-                                                    "carHealth" to carReportData?.healthScore,
+                                                    "carHealth" to carReportData.healthScore,
                                                 )
                                             )
                                             val docs = carInfoRef
@@ -753,7 +747,7 @@ fun Application.configureRouting() {
                                                 carInfoRef.collection("carPartsStatus")
                                                     .document(doc.id).delete()
                                             }
-                                            carReportData?.parts?.forEach { part ->
+                                            carReportData.parts.forEach { part ->
                                                 carInfoRef
                                                     .collection("carPartsStatus")
                                                     .document()
@@ -768,16 +762,12 @@ fun Application.configureRouting() {
                                             }
                                         }
                                         call.respond(HttpStatusCode.OK, UploadResponse())
-                                        // Store carInfoReference and set it to the user's doc
-                                        // Store Gemini API key in GCP!
-                                        return@collectLatest
                                     } catch (e: Exception) {
                                         logError(call, e)
                                         call.respond(
                                             HttpStatusCode.InternalServerError,
                                             UploadResponse(failure = "Failure to upload report: ${e.localizedMessage}")
                                         )
-                                        return@collectLatest
                                     }
                                 }
                             }
@@ -786,7 +776,6 @@ fun Application.configureRouting() {
                             HttpStatusCode.Unauthorized,
                             CreateUserProfileResponse("Failure to upload report: Authorization token not valid")
                         )
-                        return@collectLatest
                     }
                 }
         }
