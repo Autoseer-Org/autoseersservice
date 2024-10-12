@@ -19,8 +19,6 @@ data class GeminiReportData(
     val healthScore: String,
     @SerialName("carParts")
     val parts: List<GeminiPartData>,
-    @SerialName("estimatedCarPrice")
-    val estimatedCarPrice: String?
 )
 
 @Serializable
@@ -42,3 +40,19 @@ data class GeminiRecallShortSummaryData(
 data class GeminiRecallItem(
     val title: String
 )
+
+@Serializable
+data class GeminiFinalRequest(val contents: List<Content>, val generationConfig: GenerationConfig)
+
+@Serializable
+data class Content(val parts: List<Part>)
+
+@Serializable
+data class Part(val text: String? = null, val fileData: FileData? = null)
+
+
+@Serializable
+data class FileData(val mimeType: String, val fileUri: String)
+
+@Serializable
+data class GenerationConfig(val responseMimeType: String)

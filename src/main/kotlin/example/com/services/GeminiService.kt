@@ -3,16 +3,19 @@ package example.com.services
 import example.com.models.*
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
+import io.ktor.client.plugins.*
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.*
-import java.util.*
+import java.io.File
 
 interface GeminiService {
     suspend fun generateCarInfoFromImage(image: ByteArray): Flow<GeminiReportData?>
@@ -31,67 +34,107 @@ class GeminiServiceImpl : GeminiService {
         }
     }
 
-    private fun geminiApiKey(): String {
-        return System.getenv("gemini_api_key") ?: ""
-    }
-
     override suspend fun generateCarInfoFromImage(image: ByteArray): Flow<GeminiReportData?> = flow {
-        val based64Image = Base64.getEncoder().encodeToString(image)
-        val requestBody = """
-        {
-          "contents":[
-            {
-              "parts":[
-                {"text": "You're the CarSeer! The most knowledgeable system for car reports and check point inspections for cars!
+        val apiKey = geminiApiKey()
+        val imageFile = File.createTempFile("image", ".jpg") // Create a temporary image file
+        imageFile.writeBytes(image)
+        try {
+            // Optimize image vision process by storing all images files in GCloud.
+            // We can use the URI provided by File API and use it to request gemini data
+            val mimeType = ContentType.Image.JPEG.toString()
+            val numBytes = imageFile.length()
+            val displayName = "CarReportImage"
+            val initialResponse: HttpResponse =
+                client.post("https://generativelanguage.googleapis.com/upload/v1beta/files?key=$apiKey") {
+                    header("X-Goog-Upload-Protocol", "resumable")
+                    header("X-Goog-Upload-Command", "start")
+                    header("X-Goog-Upload-Header-Content-Length", numBytes.toString())
+                    header("X-Goog-Upload-Header-Content-Type", mimeType)
+                    contentType(ContentType.Application.Json)
+
+                    setBody(buildJsonObject {
+                        putJsonObject("file") {
+                            put("display_name", displayName)
+                        }
+
+                    })
+
+                }
+            val uploadUrl = initialResponse.headers["X-Goog-Upload-URL"]
+
+            if (uploadUrl == null) {
+                println("Error getting upload URL: ${initialResponse.bodyAsText()}")
+                emit(null)
+                return@flow
+            }
+            val fileInfoResponse: HttpResponse = client.put(uploadUrl) {
+                header("Content-Length", numBytes.toString())
+                header("X-Goog-Upload-Offset", "0")
+                header("X-Goog-Upload-Command", "upload, finalize")
+                setBody(imageFile.readBytes())
+            }
+
+            val body = fileInfoResponse.bodyAsText()
+            val fileUri = Json.decodeFromString<JsonObject>(body)
+                .jsonObject["file"]?.jsonObject?.get("uri")?.jsonPrimitive?.content
+
+            if (fileUri == null) {
+                println("Error getting file URI")
+                emit(null)
+                return@flow
+            }
+
+            val prompt =
+                """"You're the CarSeer! The most knowledgeable system for car reports and check point inspections for cars!
                  I need you to create a json response with all the parts that have been found here in this report. 
                  The parts have been marked with an \"X\" or a \"Mark\" on them to represent their status: Good, Medium and Bad (the json fields should be part, status, category). 
                  The idea is that we can generate a collection of car parts that are as generic as possible such that other multi checkpoint reports from other companies can easily be parsed and generate the same json response.
                   We care about the category that the part belongs too such as interior, exterior, etc. We also care about the make and model of the car as well as the year (json fields should be car_make, car_model, car_year and for the parts it should be carParts). 
                   If car make, model, and year were missing then fill them with empty strings. Lastly, you should look at the parts that need attention and the parts that are good and create overall health score for the car. it should range from 0 to 100 since it should a percentage value and the json field name should be carHealthScore (string).
-                   Finally, you should also add a field to the json for the total mileage of the car if it's found. If it's not found just fill it with an empty string. The json field name should be mileage. One more thing! Check if the image is a valid report of a car. If not, create a json field called is_image_valid that will be false else true if the car image is valid! You should looks for car reports like car inspections specifically
-                   One more thing, you should be able to deduce the price of the car based on the current mileage, make, model, and current market price of the car. You should include it in json field called estimatedCarPrice which should be string of the price with the dollar sign. If you could not get the car make, model, and mileage, then, set the field to null"},
-                  "inline_data": {
-                    "mime_type":"image/jpeg",
-                    "data": "$based64Image" 
-                  }
-                }
-              ]
-            }
-          ],
-          "generationConfig": {
-                "stopSequences": [
-                    "Title"
-                ],
-                "temperature": 1.0,
-                "responseMimeType": "application/json"
-          }
-        }
-    """.trimIndent()
-        val apiKey = geminiApiKey()
-       try {
-            val response =
-                client.post("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=$apiKey") {
+                   Finally, you should also add a field to the json for the total mileage of the car if it's found (The json field should be mileage as a string). If it's not found just fill it with an empty string. The json field name should be mileage. One more thing! Check if the image is a valid report of a car. If not, create a json field called is_image_valid that will be false else true if the car image is valid! You should looks for car reports like car inspections specifically"""".trimIndent()
+            val geminiRequest = GeminiFinalRequest(
+                contents = listOf(
+                    Content(
+                        parts = listOf(
+                            Part(text = prompt),
+                            Part(fileData = FileData(mimeType = mimeType, fileUri = fileUri))
+                        )
+                    ),
+                ),
+                generationConfig = GenerationConfig("application/json")
+            )
+
+
+            val geminiResponse: HttpResponse =
+                client.post("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$apiKey") {
+                    contentType(ContentType.Application.Json)
                     headers {
                         append(HttpHeaders.Accept, ContentType.Application.Json)
                     }
-                    setBody(requestBody)
+                    setBody(geminiRequest)
                 }
-            val jsonObject = Json.parseToJsonElement(response.bodyAsText()).jsonObject
-            val candidates = jsonObject["candidates"]?.jsonArray ?: emptyList()
-            val extractedText = candidates.mapNotNull { candidate ->
-                candidate.jsonObject["content"]?.jsonObject?.get("parts")?.jsonArray
-                    ?.find { it.jsonObject["text"] != null }?.jsonObject?.get("text")?.jsonPrimitive?.content
-            }
-           println(extractedText)
+            val extractedText = getGeminiData(geminiResponse)
             emit(Json.decodeFromString<GeminiReportData>(extractedText[0]))
-        } catch (e: Exception) {
-            println("error: ${e.localizedMessage}")
+            imageFile.delete()
+        } catch (e: ClientRequestException) {
+            println("Network error: ${e.message}")
             emit(null)
+        } catch (e: ServerResponseException) {
+            println("Server error: ${e.response.status}")
+            emit(null)
+        } catch (e: Exception) {
+            println("An unexpected error occurred: ${e.message}")
+            emit(null)
+        } finally {
+            imageFile.delete()
         }
     }
+        .flowOn(Dispatchers.IO)
 
-    override suspend fun generateRecommendedServices(carInfoModel: CarInfoModel): Flow<GeminiRecommendationModel?> = flow {
-        val requestBody = """
+
+    override suspend fun generateRecommendedServices(carInfoModel: CarInfoModel): Flow<GeminiRecommendationModel?> =
+        flow {
+            val requestBody = """
         {
           "contents":[
             {
@@ -123,29 +166,23 @@ class GeminiServiceImpl : GeminiService {
           }
         }
     """.trimIndent()
-        val apiKey = geminiApiKey()
-        try {
-            val response =
-                client.post("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=$apiKey") {
-                    headers {
-                        append(HttpHeaders.Accept, ContentType.Application.Json)
+            val apiKey = geminiApiKey()
+            try {
+                val response =
+                    client.post("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=$apiKey") {
+                        contentType(ContentType.Application.Json)
+                        headers {
+                            append(HttpHeaders.Accept, ContentType.Application.Json)
+                        }
+                        setBody(requestBody)
                     }
-                    setBody(requestBody)
-                }
-            println(response.bodyAsText())
-            val jsonObject = Json.parseToJsonElement(response.bodyAsText()).jsonObject
-            val candidates = jsonObject["candidates"]?.jsonArray ?: emptyList()
-            val extractedText = candidates.mapNotNull { candidate ->
-                candidate.jsonObject["content"]?.jsonObject?.get("parts")?.jsonArray
-                    ?.find { it.jsonObject["text"] != null }?.jsonObject?.get("text")?.jsonPrimitive?.content
+                val extractedText = getGeminiData(response)
+                emit(Json.decodeFromString<GeminiRecommendationModel>(extractedText[0]))
+            } catch (e: Exception) {
+                println("error: ${e.localizedMessage}")
+                emit(null)
             }
-            println(extractedText)
-            emit(Json.decodeFromString<GeminiRecommendationModel>(extractedText[0]))
-        } catch (e: Exception) {
-            println("error: ${e.localizedMessage}")
-            emit(null)
-        }
-    }
+        }.flowOn(Dispatchers.IO)
 
     override suspend fun generateAlertSummary(alert: Alert): Flow<GeminiSummaryModel?> = flow {
         val requestBody = """
@@ -180,24 +217,19 @@ class GeminiServiceImpl : GeminiService {
                     setBody(requestBody)
                 }
             println(response.bodyAsText())
-            val jsonObject = Json.parseToJsonElement(response.bodyAsText()).jsonObject
-            val candidates = jsonObject["candidates"]?.jsonArray ?: emptyList()
-            val extractedText = candidates.mapNotNull { candidate ->
-                candidate.jsonObject["content"]?.jsonObject?.get("parts")?.jsonArray
-                    ?.find { it.jsonObject["text"] != null }?.jsonObject?.get("text")?.jsonPrimitive?.content
-            }
-            println(extractedText)
+            val extractedText = getGeminiData(response)
             emit(Json.decodeFromString<GeminiSummaryModel>(extractedText[0]))
         } catch (e: Exception) {
             println("error: ${e.localizedMessage}")
             emit(null)
         }
-    }
+    }.flowOn(Dispatchers.IO)
 
-    override suspend fun generateShortSummariesForRecalls(publicRecallResponse: PublicRecallResponse): Flow<GeminiRecallShortSummaryData?> = flow {
-        val json = Json { encodeDefaults = true }
-        val jsonResponse = json.encodeToString<PublicRecallResponse>(publicRecallResponse)
-        val requestBody = """
+    override suspend fun generateShortSummariesForRecalls(publicRecallResponse: PublicRecallResponse): Flow<GeminiRecallShortSummaryData?> =
+        flow {
+            val json = Json { encodeDefaults = true }
+            val jsonResponse = json.encodeToString<PublicRecallResponse>(publicRecallResponse)
+            val requestBody = """
         {
           "contents":[
             {
@@ -221,28 +253,21 @@ class GeminiServiceImpl : GeminiService {
           }
         }
     """.trimIndent()
-        val apiKey = geminiApiKey()
-        try {
-            val response =
-                client.post("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=$apiKey") {
-                    headers {
-                        append(HttpHeaders.Accept, ContentType.Application.Json)
+            val apiKey = geminiApiKey()
+            try {
+                val response =
+                    client.post("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=$apiKey") {
+                        headers {
+                            append(HttpHeaders.Accept, ContentType.Application.Json)
+                        }
+                        setBody(requestBody)
                     }
-                    setBody(requestBody)
-                }
-            println(response.bodyAsText())
-            val jsonObject = Json.parseToJsonElement(response.bodyAsText()).jsonObject
-            val candidates = jsonObject["candidates"]?.jsonArray ?: emptyList()
-            val extractedText = candidates.mapNotNull { candidate ->
-                candidate.jsonObject["content"]?.jsonObject?.get("parts")?.jsonArray
-                    ?.find { it.jsonObject["text"] != null }?.jsonObject?.get("text")?.jsonPrimitive?.content
+                val extractedText = getGeminiData(response)
+                emit(Json.decodeFromString<GeminiRecallShortSummaryData>(extractedText[0]))
+            } catch (e: Exception) {
+                println("error: ${e.localizedMessage}")
+                emit(null)
             }
-            println(extractedText)
-            emit(Json.decodeFromString<GeminiRecallShortSummaryData>(extractedText[0]))
-        } catch (e: Exception) {
-            println("error: ${e.localizedMessage}")
-            emit(null)
-        }
-    }
+        }.flowOn(Dispatchers.IO)
 
 }
