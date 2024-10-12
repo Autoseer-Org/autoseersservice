@@ -7,7 +7,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 internal fun geminiApiKey(): String {
-    return System.getenv("gemini_api_key") ?: "AIzaSyBTev3sqMNmGiv60XBz8Nsi0u9C5ED_2h0"
+    return System.getenv("gemini_api_key") ?: ""
 }
 
 internal suspend fun getGeminiData(response: HttpResponse): List<String> {
