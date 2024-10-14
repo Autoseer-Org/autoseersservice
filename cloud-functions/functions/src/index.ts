@@ -1,7 +1,8 @@
 import * as logger from "firebase-functions/logger";
 import {initializeApp} from "firebase-admin/app";
 //  The updated import path is:
-import {onDocumentUpdated} from "firebase-functions/v2/firestore";
+import {onDocumentCreated, onDocumentUpdated} from
+  "firebase-functions/v2/firestore";
 import {GoogleGenerativeAI} from "@google/generative-ai";
 import {firestore} from "firebase-admin";
 import DocumentData = firestore.DocumentData;
@@ -51,9 +52,10 @@ export const estimatedCarPriceOnUploadUpdater = onDocumentUpdated(
 
     // Ensure the document has data to work with
     if (!afterData || afterData.make === "" || afterData.mileage === "" ||
-        afterData.model === "" || afterData.year === "") {
+            afterData.model === "" || afterData.year === "") {
       logger.info(
-        "Document does not have enough data to calculate estimated price: ",
+        "Document does not have enough data" +
+                " to calculate estimated price: ",
         afterData);
       return null;
     }
@@ -77,4 +79,28 @@ export const estimatedCarPriceOnUploadUpdater = onDocumentUpdated(
     } else {
       return null;
     }
+  });
+
+export const estimatedCarPriceOnCarReferenceCreated = onDocumentCreated(
+  "carInfo/{id}",
+  async (event) => {
+    const data: DocumentData | undefined = event.data?.data();
+
+    // Ensure the document has data to work with
+    if (!data || data.make === "" || data.mileage === "" ||
+            data.model === "" || data.year === "") {
+      logger.info(
+        "Document does not have enough data to calculate " +
+                "estimated price: ",
+        data);
+      return null;
+    }
+    const estimatedCarPrice = await getEstimatedCarPrice(data);
+    // Only update Firestore if the estimated price has changed
+    logger.info("Estimated car price updated:", estimatedCarPrice);
+
+    return event.data?.ref.set(
+      {estimatedCarPrice},
+      {merge: true}
+    );
   });
