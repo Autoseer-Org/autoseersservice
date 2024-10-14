@@ -6,11 +6,7 @@ import com.google.cloud.firestore.Firestore
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.cloud.FirestoreClient
 import example.com.models.*
-import example.com.services.GeminiServiceImpl
-import example.com.services.RecallServiceImpl
-import example.com.services.VerificationErrorState
-import example.com.services.VerificationState
-import example.com.services.VerificationTokenServiceImpl
+import example.com.services.*
 import io.ktor.http.*
 import io.ktor.server.application.*
 import io.ktor.server.engine.*
@@ -572,8 +568,7 @@ fun Application.configureRouting() {
                             } else {
                                 homeResponse = homeResponse.copy(
                                     data = HomeData(
-                                        mileage = carInfo?.data?.get("mileage").toString()
-                                            .toIntOrNull() ?: 0,
+                                        mileage = carInfo?.data?.get("mileage") as String? ?: "",
                                         healthScore = carInfo?.data?.get("carHealth").toString()
                                             .toIntOrNull() ?: 0,
                                         model = carInfo?.data?.get("model").toString(),
@@ -581,6 +576,8 @@ fun Application.configureRouting() {
                                         recalls = carInfo?.data?.get("recalls").toString()
                                             .toIntOrNull(),
                                         repairs = (userData["repairs"] as Long).toInt(),
+                                        userName = userData["name"] as String,
+                                        estimatedCarPrice = carInfo?.data?.get("estimatedCarPrice") as String? ?: "",
                                     ),
                                 )
                                 val mediumParts = carInfo
@@ -589,28 +586,22 @@ fun Application.configureRouting() {
                                     ?.whereEqualTo("status", "Medium")
                                     ?.get()
 
-                                val mediumPartRef =
+                                val mediumPartSize =
                                     withContext(Dispatchers.IO + context) {
                                         mediumParts?.get()
-                                    }?.size()
-                                homeResponse =
-                                    homeResponse.copy(homeResponse.data?.copy(alerts = mediumPartRef))
-
+                                    }?.size() ?: 0
                                 val badParts = carInfo
                                     ?.reference
                                     ?.collection("carPartsStatus")
                                     ?.whereEqualTo("status", "Bad")
                                     ?.get()
-                                val badPartsRef =
+                                val badPartsSize =
                                     withContext(Dispatchers.IO + context) {
                                         badParts?.get()
-                                    }?.size()
-                                homeResponse = homeResponse.copy(
-                                    homeResponse.data?.copy(
-                                        alerts = (homeResponse.data?.alerts?.plus(badPartsRef ?: 0))
-                                            ?: (0 + (badPartsRef ?: 0))
-                                    )
-                                )
+                                    }?.size() ?: 0
+                                val totalAlertsSize = badPartsSize + mediumPartSize
+                                homeResponse =
+                                    homeResponse.copy(homeResponse.data?.copy(alerts = totalAlertsSize))
                                 call.respond(HttpStatusCode.OK, homeResponse)
                                 return@collect
                             }
@@ -899,7 +890,6 @@ fun Application.configureRouting() {
                                 HttpStatusCode.InternalServerError,
                                 ManualEntryResponse("Failure to manually enter card data: Failed to enter car info")
                             )
-                            return@collectLatest
                         }
 
                         is VerificationState.VerificationStateSuccess -> {
@@ -916,7 +906,6 @@ fun Application.configureRouting() {
                                         HttpStatusCode.BadRequest,
                                         ManualEntryResponse("Failure to manually enter card data: User could not be found")
                                     )
-                                    return@collectLatest
                                 }
                                 val carInfoRef = userData?.get("carInfoRef") as DocumentReference
                                 val carInfoData = withContext(Dispatchers.IO + context) {
@@ -934,9 +923,9 @@ fun Application.configureRouting() {
                                 val year = request.year.ifBlank {
                                     carInfoData?.get("year") ?: ""
                                 }
-                                var recalls: Int? = if (!make.toString().isNullOrBlank()
-                                    && !model.toString().isNullOrBlank()
-                                    && !year.toString().isNullOrBlank()
+                                val recalls: Int? = if (make.toString().isNotBlank()
+                                    && model.toString().isNotBlank()
+                                    && year.toString().isNotBlank()
                                 ) {
                                     0
                                 } else {
@@ -953,13 +942,11 @@ fun Application.configureRouting() {
                                     )
                                 )
                                 call.respond(HttpStatusCode.OK, ManualEntryResponse())
-                                return@collectLatest
                             } catch (e: Exception) {
                                 call.respond(
                                     HttpStatusCode.InternalServerError,
                                     ManualEntryResponse(failure = "Failure to manually enter card data: ${e.localizedMessage}")
                                 )
-                                return@collectLatest
                             }
                         }
                     }

@@ -12,7 +12,7 @@ data class HomeResponse(
 @Serializable
 data class HomeData(
     @SerialName("mileage")
-    val mileage: Int? = 0,
+    val mileage: String? = "",
     @SerialName("health_score")
     val healthScore: Int? = 0,
     @SerialName("alerts")
@@ -27,4 +27,8 @@ data class HomeData(
     val make: String? = null,
     @SerialName("model")
     val model: String? = null,
+    @SerialName("estimatedCarPrice")
+    val estimatedCarPrice: String? = "",
+    @SerialName("userName")
+    val userName: String? = "",
 )
