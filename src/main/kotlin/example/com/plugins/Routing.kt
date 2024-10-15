@@ -709,18 +709,56 @@ fun Application.configureRouting() {
                                             }
                                         } else {
                                             if (carInfoRefData["make"].toString().isNotBlank()
-                                                || carInfoRefData["model"].toString()
-                                                    .isNotBlank()
-                                                || carInfoRefData["year"].toString()
-                                                    .isNotBlank()
-                                            ) {
+                                                && carReportData.carMake.isNotBlank()
+                                                && carReportData.carMake != carInfoRefData["make"].toString()) {
+                                                call.respond(
+                                                    HttpStatusCode.BadRequest,
+                                                    UploadResponse(failure = "Failure to upload report: Make can't be changed")
+                                                )
+                                            } else {
                                                 carInfoRef.update(
                                                     mapOf(
                                                         "make" to carReportData.carMake,
-                                                        "mileage" to carReportData.carMileage,
+                                                    )
+                                                )
+                                            }
+                                            if (carInfoRefData["model"].toString().isNotBlank()
+                                                && carReportData.carModel.isNotBlank()
+                                                && carReportData.carModel != carInfoRefData["model"].toString()) {
+                                                call.respond(
+                                                    HttpStatusCode.BadRequest,
+                                                    UploadResponse(failure = "Failure to upload report: Model can't be changed")
+                                                )
+                                            } else {
+                                                carInfoRef.update(
+                                                    mapOf(
                                                         "model" to carReportData.carModel,
+                                                    )
+                                                )
+                                            }
+                                            if (carInfoRefData["year"].toString().isNotBlank()
+                                                && carReportData.carYear.isNotBlank()
+                                                && carReportData.carYear != carInfoRefData["year"].toString()) {
+                                                call.respond(
+                                                    HttpStatusCode.BadRequest,
+                                                    UploadResponse(failure = "Failure to upload report: Year can't be changed")
+                                                )
+                                            } else {
+                                                carInfoRef.update(
+                                                    mapOf(
                                                         "year" to carReportData.carYear,
-                                                        "carHealth" to carReportData.healthScore,
+                                                    )
+                                                )
+                                            }
+                                            if ((carInfoRefData["mileage"].toString().isBlank()
+                                                        && carReportData.carMileage.all { it.isDigit() })
+                                                || (carInfoRefData["mileage"].toString().all { it.isDigit() }
+                                                        && carReportData.carMileage.all { it.isDigit() }
+                                                        && carInfoRefData["mileage"].toString().toInt()
+                                                        < carReportData.carMileage.toInt())) {
+                                                carInfoRef.update(
+                                                    mapOf(
+                                                        "mileage" to carReportData.carMileage,
                                                     )
                                                 )
                                             }
