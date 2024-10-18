@@ -34,6 +34,10 @@ fun Application.configureRouting() {
                     .deleteAccount(token)
                     .flowOn(Dispatchers.IO)
                     .onEmpty { call.respond(HttpStatusCode.BadRequest, DeleteAccountModel(success = false)) }
+                    .catch {
+                        logError(call, it)
+                        call.respond(HttpStatusCode.ExpectationFailed, DeleteAccountModel(success = false))
+                    }
                     .collectLatest { verificationState ->
                         val uid = verificationState.uid.ifBlank { return@collectLatest }
                         val userDoc = firestore.collection("users").document(uid)
