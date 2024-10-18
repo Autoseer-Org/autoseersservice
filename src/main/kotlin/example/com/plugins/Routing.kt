@@ -13,9 +13,11 @@ import io.ktor.server.engine.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
+import io.ktor.util.pipeline.*
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.withContext
+import org.apache.commons.logging.Log
 import java.sql.Timestamp
 
 fun Application.configureRouting() {
@@ -26,6 +28,31 @@ fun Application.configureRouting() {
 
     val firestore: Firestore = FirestoreClient.getFirestore()
     routing {
+        get("/deleteAccount") {
+            getAuthRequestToken()?.let { token ->
+                verificationTokenService
+                    .deleteAccount(token)
+                    .flowOn(Dispatchers.IO)
+                    .onEmpty { call.respond(HttpStatusCode.BadRequest, DeleteAccountModel(success = false)) }
+                    .collectLatest { verificationState ->
+                        val uid = verificationState.uid.ifBlank { return@collectLatest }
+                        val userDoc = firestore.collection("users").document(uid)
+                        try {
+                            val userData = userDoc.get().get().data
+                            if (userData?.get("carInfoRef") == "") {
+                                null
+                            } else {
+                                userData?.get("carInfoRef") as DocumentReference
+                            }?.delete()
+                            userDoc.delete()
+                            call.respond(HttpStatusCode.OK, DeleteAccountModel(success = true))
+                        } catch (e: Exception) {
+                            logError(call, e)
+                            call.respond(HttpStatusCode.OK, DeleteAccountModel(success = false))
+                        }
+                    }
+            }
+        }
         get("/recommendations") {
             val authHeader = call.request.headers["Authorization"]
             if (authHeader == null || !authHeader.startsWith("Bearer ")) {
@@ -850,6 +877,7 @@ fun Application.configureRouting() {
                                 return@collectLatest
                             }
                         }
+                        is VerificationState.AccountDeleted -> TODO()
                     }
                 }
         }
@@ -949,6 +977,8 @@ fun Application.configureRouting() {
                                 )
                             }
                         }
+
+                        is VerificationState.AccountDeleted -> TODO()
                     }
                 }
         }
@@ -1154,6 +1184,7 @@ fun Application.configureRouting() {
                                 return@collectLatest
                             }
                         }
+                        is VerificationState.AccountDeleted -> TODO()
                     }
                 }
         }
@@ -1261,6 +1292,8 @@ fun Application.configureRouting() {
                                 return@collectLatest
                             }
                         }
+
+                        is VerificationState.AccountDeleted -> TODO()
                     }
                 }
         }
@@ -1315,8 +1348,20 @@ fun Application.configureRouting() {
                                 )
                             }
                         }
+
+                        is VerificationState.AccountDeleted -> TODO()
                     }
                 }
         }
     }
+}
+
+private suspend fun PipelineContext<Unit, ApplicationCall>.getAuthRequestToken(): String? {
+    val authHeader = call.request.headers["Authorization"]
+    if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+        call.respond(HttpStatusCode.Unauthorized)
+        return null
+    }
+    val token = authHeader.removePrefix("Bearer ").trim()
+    return token
 }

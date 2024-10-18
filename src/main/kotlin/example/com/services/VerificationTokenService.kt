@@ -12,23 +12,30 @@ import kotlin.time.toDuration
 sealed class VerificationState {
     data class VerificationStateSuccess(
         val firebaseToken: FirebaseToken? = null,
-    ): VerificationState()
+    ) : VerificationState()
+
     data class VerificationStateFailure(
         val error: VerificationErrorState? = null
-    ): VerificationState()
+    ) : VerificationState()
+
+    data class AccountDeleted(val uid: String) : VerificationState()
 }
 
 sealed class VerificationErrorState {
-    data object FailedToParseToken: VerificationErrorState()
-    data object MissingToken: VerificationErrorState()
-    data object TokenRevoked: VerificationErrorState()
+    data object FailedToParseToken : VerificationErrorState()
+    data object MissingToken : VerificationErrorState()
+    data object TokenRevoked : VerificationErrorState()
+    data object AccountDeletionError : VerificationErrorState()
 }
 
 interface VerificationTokenService {
     fun isVerificationTokenValid(token: String, getFirebaseToken: Boolean):
             Flow<VerificationState>
+
     fun verifyAndCheckForTokenRevoked(token: String, getFirebaseToken: Boolean):
             Flow<VerificationState>
+
+    fun deleteAccount(token: String): Flow<VerificationState>
 }
 
 /*
@@ -36,7 +43,7 @@ interface VerificationTokenService {
  */
 class VerificationTokenServiceImpl(
     private val auth: FirebaseAuth,
-): VerificationTokenService {
+) : VerificationTokenService {
     /*
      * Verifies that the token is valid and sends a VerificationStateSuccess back to the caller
      * with a firebaseToken if getFirebaseToken is true
@@ -47,22 +54,26 @@ class VerificationTokenServiceImpl(
     */
     override fun isVerificationTokenValid(token: String, getFirebaseToken: Boolean):
             Flow<VerificationState> = flow {
-                try {
-                    val firebaseToken = auth.verifyIdToken(token)
-                    if (getFirebaseToken) {
-                        emit(VerificationState.VerificationStateSuccess(firebaseToken))
-                    } else {
-                        emit(VerificationState.VerificationStateSuccess())
-                    }
-                }catch (e: IllegalArgumentException) {
-                    emit(VerificationState.VerificationStateFailure(
-                        error = VerificationErrorState.MissingToken
-                    ))
-                }catch (e: FirebaseAuthException) {
-                    emit(VerificationState.VerificationStateFailure(
-                        error = VerificationErrorState.FailedToParseToken
-                    ))
-                }
+        try {
+            val firebaseToken = auth.verifyIdToken(token)
+            if (getFirebaseToken) {
+                emit(VerificationState.VerificationStateSuccess(firebaseToken))
+            } else {
+                emit(VerificationState.VerificationStateSuccess())
+            }
+        } catch (e: IllegalArgumentException) {
+            emit(
+                VerificationState.VerificationStateFailure(
+                    error = VerificationErrorState.MissingToken
+                )
+            )
+        } catch (e: FirebaseAuthException) {
+            emit(
+                VerificationState.VerificationStateFailure(
+                    error = VerificationErrorState.FailedToParseToken
+                )
+            )
+        }
     }
 
     /*
@@ -78,8 +89,15 @@ class VerificationTokenServiceImpl(
                     if (getFirebaseToken) VerificationState
                         .VerificationStateSuccess(firebaseToken = firebaseToken)
                     else VerificationState.VerificationStateSuccess()
-                }catch (e: Exception) {
+                } catch (e: Exception) {
                     VerificationState.VerificationStateFailure(error = VerificationErrorState.TokenRevoked)
                 }
             }
+
+    override fun deleteAccount(token: String) = isVerificationTokenValid(token, true)
+        .filterIsInstance<VerificationState.VerificationStateSuccess>()
+        .mapNotNull { state ->
+            auth.deleteUser(state.firebaseToken?.uid)
+            VerificationState.AccountDeleted(state.firebaseToken?.uid ?: "")
+        }
 }
